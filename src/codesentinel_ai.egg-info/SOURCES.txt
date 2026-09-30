@@ -2,7 +2,13 @@ README.md
 pyproject.toml
 src/codesentinel/__init__.py
 src/codesentinel/config.py
+src/codesentinel/github_client.py
 src/codesentinel/main.py
+src/codesentinel/diff/__init__.py
+src/codesentinel/diff/chunk.py
+src/codesentinel/diff/fetch.py
+src/codesentinel/diff/filter.py
+src/codesentinel/diff/positions.py
 src/codesentinel_ai.egg-info/PKG-INFO
 src/codesentinel_ai.egg-info/SOURCES.txt
 src/codesentinel_ai.egg-info/dependency_links.txt

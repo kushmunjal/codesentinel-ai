@@ -2,6 +2,7 @@ fastapi
 uvicorn
 requests
 tiktoken
+pydantic
 
 [dev]
 pytest

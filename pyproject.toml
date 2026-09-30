@@ -6,7 +6,8 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "requests",
-    "tiktoken"
+    "tiktoken",
+    "pydantic"
 ]
 
 [project.optional-dependencies]

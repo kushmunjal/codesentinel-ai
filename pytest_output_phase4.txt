@@ -1,0 +1,15 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.4, pytest-9.1.1, pluggy-1.6.0 -- /home/student/codesentinel-ai/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/student/codesentinel-ai
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collecting ... collected 5 items
+
+tests/unit/test_diff.py::test_filter_diff PASSED                         [ 20%]
+tests/unit/test_diff.py::test_chunk_diff PASSED                          [ 40%]
+tests/unit/test_diff.py::test_map_line_to_position PASSED                [ 60%]
+tests/unit/test_llm.py::test_openai_compat_provider PASSED               [ 80%]
+tests/unit/test_llm.py::test_retry_success_after_failure PASSED          [100%]
+
+============================== 5 passed in 1.22s ===============================
