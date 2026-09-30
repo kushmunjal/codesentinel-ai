@@ -12,6 +12,9 @@ def main():
         pr_number = int(os.environ.get("TEST_PR", "1"))
         print(f"CodeSentinel AI invoked for {event_name}")
         run_pipeline(owner, repo, pr_number)
+    elif event_name == "issue_comment":
+        from codesentinel.commands import handle_comment
+        print('Handling issue comment')
     elif event_name == "issues":
         owner = os.environ.get("TEST_OWNER", "kushmunjal")
         repo = os.environ.get("TEST_REPO", "codesentinel-test")

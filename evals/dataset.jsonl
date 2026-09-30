@@ -1,0 +1,2 @@
+{"type": "pr", "repo": "test", "number": 1, "expected_findings": ["logic bug", "division by zero"]}
+{"type": "issue", "repo": "test", "number": 2, "expected_labels": ["bug"]}

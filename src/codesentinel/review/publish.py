@@ -1,8 +1,8 @@
 from codesentinel.github_client import GitHubClient
 
-def publish_summary(client: GitHubClient, owner: str, repo: str, pr_number: int, summary: str, risk: str, checks: list):
+def publish_summary(client: GitHubClient, owner: str, repo: str, pr_number: int, summary: str, risk: str, checks: list, commit_id: str = ""):
     marker = "<!-- codesentinel:summary -->"
-    body = f"{marker}\n## CodeSentinel AI Summary\n**Risk Level:** {risk.upper()}\n\n{summary}\n\n"
+    body = f"{marker}\n<!-- codesentinel:last_sha={commit_id} -->\n## CodeSentinel AI Summary\n**Risk Level:** {risk.upper()}\n\n{summary}\n\n"
     if checks:
         body += "**Automated Checks:**\n"
         for check in checks:
