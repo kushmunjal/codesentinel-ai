@@ -24,3 +24,23 @@ class GitHubClient:
         resp = self.session.get(url, headers=headers)
         resp.raise_for_status()
         return resp.text
+
+    def get_issue(self, owner: str, repo: str, issue_number: int) -> dict:
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}"
+        return self.get(url).json()
+
+    def get_labels(self, owner: str, repo: str) -> list[dict]:
+        url = f"https://api.github.com/repos/{owner}/{repo}/labels"
+        return self.get(url).json()
+        
+    def get_issues(self, owner: str, repo: str, state="open", per_page=30) -> list[dict]:
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues?state={state}&per_page={per_page}"
+        return self.get(url).json()
+
+    def add_labels_to_issue(self, owner: str, repo: str, issue_number: int, labels: list[str]):
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/labels"
+        self.session.post(url, json={"labels": labels}).raise_for_status()
+
+    def add_comment_to_issue(self, owner: str, repo: str, issue_number: int, body: str):
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
+        self.session.post(url, json={"body": body}).raise_for_status()
