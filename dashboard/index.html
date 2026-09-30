@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CodeSentinel AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+    </script>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans p-8">
+    <div class="max-w-6xl mx-auto space-y-8">
+        <div class="text-center space-y-4">
+            <h1 class="text-4xl font-bold text-indigo-400">CodeSentinel AI</h1>
+            <p class="text-xl">AI-powered GitHub Action for PR reviews and issue triage</p>
+            <p class="text-sm text-slate-400">Event &rarr; Diff pipeline &rarr; LLM review &rarr; GitHub comment/labels</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+                <h2 class="text-2xl font-semibold mb-4 text-emerald-400">Live PR Review</h2>
+                <div class="p-4 border border-dashed border-slate-600 rounded bg-slate-800/50 text-center text-slate-500">
+                    Placeholder &mdash; wired up in a later phase
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+                <h2 class="text-2xl font-semibold mb-4 text-blue-400">Issue Triage</h2>
+                <div class="p-4 border border-dashed border-slate-600 rounded bg-slate-800/50 text-center text-slate-500">
+                    Placeholder &mdash; wired up in a later phase
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+                <h2 class="text-2xl font-semibold mb-4 text-purple-400">Evaluation Results</h2>
+                <div class="p-4 border border-dashed border-slate-600 rounded bg-slate-800/50 text-center text-slate-500">
+                    Placeholder &mdash; wired up in a later phase
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+                <h2 class="text-2xl font-semibold mb-4 text-amber-400">Build Progress</h2>
+                <ul class="space-y-2">
+                    <li class="flex items-center gap-2"><span class="text-green-500">&#10003;</span> Phase 1: VM Setup</li>
+                    <li class="flex items-center gap-2"><span class="text-green-500">&#10003;</span> Phase 2: Repo & Dashboard Skeleton</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 3: Diff Pipeline</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 4: LLM Layer & Schemas</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 5: PR Review Pipeline</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 6: Issue Triage Pipeline</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 7: Incremental Reviews</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 8: Security Hardening</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 9: Evaluation Harness</li>
+                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 10: Final Polish</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+            <h2 class="text-2xl font-semibold mb-4 text-pink-400">Architecture</h2>
+            <div class="mermaid flex justify-center">
+                flowchart LR
+                    A[Fetch Diff] --> B[Filter]
+                    B --> C[Chunk]
+                    C --> D[LLM]
+                    D --> E[Validate]
+                    E --> F[Publish]
+            </div>
+        </div>
+        
+        <div class="text-center text-sm text-slate-500 mt-12">
+            Built with Python, FastAPI, and Tailwind CSS.
+        </div>
+    </div>
+</body>
+</html>

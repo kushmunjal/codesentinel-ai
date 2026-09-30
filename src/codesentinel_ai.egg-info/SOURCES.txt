@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+src/codesentinel/__init__.py
+src/codesentinel/config.py
+src/codesentinel/main.py
+src/codesentinel_ai.egg-info/PKG-INFO
+src/codesentinel_ai.egg-info/SOURCES.txt
+src/codesentinel_ai.egg-info/dependency_links.txt
+src/codesentinel_ai.egg-info/requires.txt
+src/codesentinel_ai.egg-info/top_level.txt

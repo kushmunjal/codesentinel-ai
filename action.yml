@@ -1,0 +1,43 @@
+name: 'CodeSentinel AI'
+description: 'AI-powered PR reviewer and Issue triager'
+inputs:
+  provider:
+    description: 'LLM provider'
+    required: true
+  model:
+    description: 'LLM model name'
+    required: true
+  api_key:
+    description: 'API key for LLM'
+    required: true
+  base_url:
+    description: 'Optional Base URL'
+    required: false
+  github_token:
+    description: 'GitHub Token'
+    required: true
+  config_path:
+    description: 'Path to config file'
+    default: '.codesentinel.yml'
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install .
+      shell: bash
+    - name: Run CodeSentinel
+      run: python -m codesentinel.main
+      shell: bash
+      env:
+        PROVIDER: \{{ inputs.provider }}
+        MODEL: \{{ inputs.model }}
+        API_KEY: \{{ inputs.api_key }}
+        BASE_URL: \{{ inputs.base_url }}
+        GITHUB_TOKEN: \{{ inputs.github_token }}
+        CONFIG_PATH: \{{ inputs.config_path }}

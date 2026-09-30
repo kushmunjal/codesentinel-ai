@@ -2,3 +2,13 @@
 name = "codesentinel-ai"
 requires-python = ">=3.12"
 version = "0.1.0"
+dependencies = [
+    "fastapi",
+    "uvicorn"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff"
+]
