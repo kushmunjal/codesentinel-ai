@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/student/codesentinel-ai/src/codesentinel/main.py", line 20, in <module>
+    main()
+    ~~~~^^
+  File "/home/student/codesentinel-ai/src/codesentinel/main.py", line 15, in main
+    run_pipeline(owner, repo, pr_number)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/student/codesentinel-ai/src/codesentinel/review/pipeline.py", line 34, in run_pipeline
+    summary = generate_with_retry(
+        llm.generate,
+    ...<2 lines>...
+        PRSummary
+    )
+  File "/home/student/codesentinel-ai/src/codesentinel/llm/retry.py", line 30, in generate_with_retry
+    raise RuntimeError(f"Failed to generate valid output after {max_retries} attempts. Last error: {last_exception}")
+RuntimeError: Failed to generate valid output after 3 attempts. Last error: 404 Client Error: Not Found for url: https://api.groq.com/openai/v1/chat/completions
+CodeSentinel AI invoked for pull_request
+Fetching diff for kushmunjal/codesentinel-test#1
+Running checks...
+Chunking diff...
+Generating PR Summary...
