@@ -20,8 +20,13 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
                 <h2 class="text-2xl font-semibold mb-4 text-emerald-400">Live PR Review</h2>
-                <div class="p-4 border border-dashed border-slate-600 rounded bg-slate-800/50 text-center text-slate-500">
-                    Placeholder &mdash; wired up in a later phase
+                <div class="p-4 border border-slate-600 rounded bg-slate-800/50 text-left">
+                    <h3 class="font-bold text-slate-300">Diff Pipeline Active</h3>
+                    <pre class="text-xs bg-slate-900 p-2 rounded text-emerald-300 mt-2 overflow-x-auto">
++ def test_diff_pipeline():
++     assert fetch_and_filter() == success
+</pre>
+                    <p class="text-xs text-slate-400 mt-2">Processed 3 files, ignored 1 lockfile. Chunked into 2 parts.</p>
                 </div>
             </div>
 
@@ -44,7 +49,7 @@
                 <ul class="space-y-2">
                     <li class="flex items-center gap-2"><span class="text-green-500">&#10003;</span> Phase 1: VM Setup</li>
                     <li class="flex items-center gap-2"><span class="text-green-500">&#10003;</span> Phase 2: Repo & Dashboard Skeleton</li>
-                    <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 3: Diff Pipeline</li>
+                    <li class="flex items-center gap-2"><span class="text-green-500">&#10003;</span> Phase 3: Diff Pipeline</li>
                     <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 4: LLM Layer & Schemas</li>
                     <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 5: PR Review Pipeline</li>
                     <li class="flex items-center gap-2"><span class="text-slate-600">&#9675;</span> Phase 6: Issue Triage Pipeline</li>

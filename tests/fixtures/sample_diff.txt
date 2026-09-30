@@ -1,0 +1,22 @@
+diff --git a/good.py b/good.py
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/good.py
+@@ -0,0 +1,2 @@
++def test():
++    pass
+diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1 @@
++{"lockfileVersion": 2}
+diff --git a/dist/bundle.js b/dist/bundle.js
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/dist/bundle.js
+@@ -0,0 +1 @@
++console.log('hi');
