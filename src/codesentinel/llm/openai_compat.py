@@ -11,7 +11,9 @@ class OpenAICompatProvider(LLMProvider):
     def __init__(self, model: str = None, api_key: str = None, base_url: str = None):
         self.model = model or os.environ.get("MODEL", "gpt-4")
         self.api_key = api_key or os.environ.get("API_KEY")
-        self.base_url = base_url or os.environ.get("BASE_URL", "https://api.openai.com/v1")
+        self.base_url = base_url or os.environ.get("BASE_URL")
+        if not self.base_url:
+            self.base_url = "https://api.openai.com/v1"
         if not self.api_key:
             raise ValueError("API_KEY must be set.")
             
