@@ -44,3 +44,13 @@ class GitHubClient:
     def add_comment_to_issue(self, owner: str, repo: str, issue_number: int, body: str):
         url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
         self.session.post(url, json={"body": body}).raise_for_status()
+
+    def get_file_content(self, owner: str, repo: str, path: str, ref: str = "main") -> str:
+        url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
+        import base64
+        resp = self.session.get(url)
+        if resp.status_code == 200:
+            data = resp.json()
+            if "content" in data:
+                return base64.b64decode(data["content"]).decode("utf-8")
+        return ""
