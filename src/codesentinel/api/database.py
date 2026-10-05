@@ -1,9 +1,13 @@
+import os
+
+db_dir = os.path.join(os.path.expanduser("~"), "codesentinel-ai")
+os.makedirs(db_dir, exist_ok=True)
+db_path = os.path.join(db_dir, "codesentinel.db")
+
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 import datetime
-import os
 
-db_path = os.path.join(os.path.expanduser("~"), "codesentinel-ai", "codesentinel.db")
 DATABASE_URL = f"sqlite:///{db_path}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
