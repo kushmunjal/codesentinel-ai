@@ -62,12 +62,10 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
 
     # Convert findings to GitHub format
     gh_comments = []
+    pr_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
+    pr_data = client.get(pr_url).json()
+    commit_id = pr_data["head"]["sha"]
     for f in all_findings:
-        # We need the commit ID for the PR. Fetch it.
-        pr_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
-        pr_data = client.get(pr_url).json()
-        commit_id = pr_data["head"]["sha"]
-        
         pos = map_line_to_position(raw_diff, f.line)
         if pos > 0:
             gh_comments.append({
