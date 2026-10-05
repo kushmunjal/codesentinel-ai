@@ -35,9 +35,9 @@ runs:
       run: python -m codesentinel.main
       shell: bash
       env:
-        PROVIDER: \{{ inputs.provider }}
-        MODEL: \{{ inputs.model }}
-        API_KEY: \{{ inputs.api_key }}
-        BASE_URL: \{{ inputs.base_url }}
-        GITHUB_TOKEN: \{{ inputs.github_token }}
-        CONFIG_PATH: \{{ inputs.config_path }}
+        PROVIDER: ${{ inputs.provider }}
+        MODEL: ${{ inputs.model }}
+        API_KEY: ${{ inputs.api_key }}
+        BASE_URL: ${{ inputs.base_url }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        CONFIG_PATH: ${{ inputs.config_path }}
