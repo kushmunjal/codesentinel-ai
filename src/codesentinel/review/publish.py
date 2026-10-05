@@ -30,4 +30,7 @@ def publish_review(client: GitHubClient, owner: str, repo: str, pr_number: int, 
         "event": "COMMENT",
         "comments": comments
     }
-    client.session.post(url, json=payload).raise_for_status()
+    resp = client.session.post(url, json=payload)
+    if not resp.ok:
+        print("GITHUB ERROR:", resp.text)
+    resp.raise_for_status()

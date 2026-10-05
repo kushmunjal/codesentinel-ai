@@ -72,7 +72,8 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
         if pos > 0:
             gh_comments.append({
                 "path": f.file,
-                "position": pos,
+                "line": f.line,
+                "side": "RIGHT",
                 "body": f"**[{f.severity.upper()}] {f.category}**\n{f.explanation}\n\nSuggested fix:\n```python\n{f.suggested_fix}\n```"
             })
             
