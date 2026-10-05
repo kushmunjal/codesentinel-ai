@@ -31,7 +31,8 @@ def run_triage_pipeline(owner: str, repo: str, issue_number: int):
     if dupes:
         user_prompt += f"\n\nPotential duplicate detected: #{dupes[0]['number']} - {dupes[0]['title']}"
         
-    with open(os.path.join(os.path.dirname(__file__), "../../../prompts/triage.md")) as f:
+    prompt_path = os.path.join(os.environ.get("ACTION_PATH", os.path.join(os.path.dirname(__file__), "../../..")), "prompts/triage.md")
+    with open(prompt_path) as f:
         triage_prompt = f.read()
 
     result = generate_with_retry(

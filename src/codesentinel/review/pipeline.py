@@ -45,7 +45,8 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
     guidelines_text = "\nRepo Guidelines:\n" + "\n".join([f"- {g}" for g in guidelines]) if guidelines else ""
     
     print("Generating Inline Reviews...")
-    with open(os.path.join(os.path.dirname(__file__), "../../../prompts/review.md")) as f:
+    prompt_path = os.path.join(os.environ.get("ACTION_PATH", os.path.join(os.path.dirname(__file__), "../../..")), "prompts/review.md")
+    with open(prompt_path) as f:
         review_prompt = f.read()
 
     all_findings = []
@@ -61,7 +62,8 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
     print(f"Found {len(all_findings)} issues. Validating...")
 
     print("Generating PR Summary...")
-    with open(os.path.join(os.path.dirname(__file__), "../../../prompts/summary.md")) as f:
+    prompt_path = os.path.join(os.environ.get("ACTION_PATH", os.path.join(os.path.dirname(__file__), "../../..")), "prompts/summary.md")
+    with open(prompt_path) as f:
         summary_prompt = f.read()
 
     summary = generate_with_retry(

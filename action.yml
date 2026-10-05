@@ -41,3 +41,4 @@ runs:
         BASE_URL: ${{ inputs.base_url }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         CONFIG_PATH: ${{ inputs.config_path }}
+        ACTION_PATH: ${{ github.action_path }}
