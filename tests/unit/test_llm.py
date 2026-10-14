@@ -29,7 +29,7 @@ def test_retry_success_after_failure():
         call_count += 1
         if call_count == 1:
             raise ValueError("Temporary network issue")
-        return PRSummary(summary="Fixed", risk_level="low")
+        return PRSummary(summary="Fixed", risk_level="low", risk_reasoning="minor", review_effort=1, review_effort_reasoning="trivial")
         
     result = generate_with_retry(mock_generate, "sys", "user", PRSummary)
     assert result.summary == "Fixed"

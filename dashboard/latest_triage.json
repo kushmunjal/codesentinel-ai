@@ -1,1 +1,1 @@
-{"title": "Bug: The calculator divide method crashes", "labels": ["bug"], "priority": "critical", "comment": null, "duplicate_flag": true}
+{"title": "vague-report", "labels": [], "priority": "low", "comment": "Thanks for reaching out. To help us investigate, could you please provide:\n1. Exact error message or logs\n2. Steps to reproduce the problem\n3. Expected behavior vs. what you're observing\n4. Your operating system and relevant version info\n\nWithout these details, we won't be able to diagnose the issue.", "duplicate_flag": false}

@@ -9,7 +9,8 @@ dependencies = [
     "tiktoken",
     "pydantic",
     "SQLAlchemy",
-    "PyYAML"
+    "PyYAML",
+    "prometheus-client"
 ]
 
 [project.optional-dependencies]
