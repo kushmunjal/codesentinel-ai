@@ -1,88 +1,219 @@
+from collections import defaultdict
+from contextlib import asynccontextmanager
 import os
-import uvicorn
-from fastapi import FastAPI, Depends, Response
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from threading import Lock
+import time
+
+from fastapi import Depends, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+import uvicorn
 
-from codesentinel.api.database import engine, Base, get_db, PRState, IssueState, ActivityLog
+from codesentinel.api.auth import router as auth_router, seed_default_user
+from codesentinel.api.database import IssueState, PRState, engine, get_db
+from codesentinel.api.webhook import router as webhook_router
 from codesentinel.config import load_config
-from codesentinel.observability import get_metrics_payload, get_metrics_summary
+from codesentinel.observability.metrics import (
+    get_metrics_payload,
+    REVIEWS_TOTAL,
+    LLM_REQUESTS_TOTAL,
+    CACHE_HITS_TOTAL,
+    CACHE_MISSES_TOTAL,
+    LLM_TOKENS_TOTAL,
+    LLM_LATENCY_SECONDS
+)
 
-app = FastAPI(title="CodeSentinel Console API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    seed_default_user()
+    yield
+
+app = FastAPI(title="CodeSentinel Console API", lifespan=lifespan)
+
+# --- In-Memory Rate Limiter for /api/ routes ---
+
+class InMemoryRateLimiter:
+    """Thread-safe sliding window in-memory rate limiter using Python standard library."""
+    def __init__(self, requests_per_minute: int = 120, window_seconds: float = 60.0):
+        self.rpm = int(os.environ.get("RATE_LIMIT_PER_MINUTE", str(requests_per_minute)))
+        self.window = window_seconds
+        self.requests = defaultdict(list)
+        self.lock = Lock()
+
+    def is_rate_limited(self, client_id: str) -> bool:
+        now = time.time()
+        with self.lock:
+            cutoff = now - self.window
+            self.requests[client_id] = [t for t in self.requests[client_id] if t > cutoff]
+            if len(self.requests[client_id]) >= self.rpm:
+                return True
+            self.requests[client_id].append(now)
+            return False
+
+    def reset(self):
+        with self.lock:
+            self.requests.clear()
+
+rate_limiter = InMemoryRateLimiter(requests_per_minute=120)
+
+# --- CORS Lockdown ---
+
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+env_origins = os.environ.get("ALLOWED_ORIGINS")
+allowed_origins: list[str] = (
+    [origin.strip() for origin in env_origins.split(",") if origin.strip()]
+    if env_origins
+    else DEFAULT_ALLOWED_ORIGINS
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
 )
 
-# Observability endpoints
+# --- Security Headers & Rate Limiting Middleware ---
+
+@app.middleware("http")
+async def security_and_rate_limit_middleware(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        if not client_ip:
+            client_ip = request.client.host if request.client else "127.0.0.1"
+
+        if rate_limiter.is_rate_limited(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "Too Many Requests",
+                    "detail": "Rate limit exceeded. Please retry after some time."
+                },
+                headers={
+                    "Retry-After": "60",
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Frame-Options": "DENY",
+                }
+            )
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; "
+        "frame-ancestors 'none';"
+    )
+    return response
+
+# Include Routers
+app.include_router(auth_router)
+app.include_router(webhook_router)
+
+# --- Observability Endpoints ---
+
 @app.get("/healthz")
-@app.get("/api/health")
 def healthz():
-    """Liveness check endpoint."""
     return {"status": "ok"}
 
-
 @app.get("/readyz")
-def readyz():
-    """Readiness check endpoint verifying database connectivity and model configuration."""
-    db_ok = False
-    db_error = None
+def readyz(response: Response, db: Session = Depends(get_db)):
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        db_ok = True
+        db.execute(text("SELECT 1"))
     except Exception as e:
-        db_error = str(e)
+        response.status_code = status.HTTP_533 if hasattr(status, "HTTP_533") else 503
+        return {"status": "error", "reason": f"Database unavailable: {e}"}
 
-    config_ok = False
-    config_error = None
     try:
         cfg = load_config()
-        if cfg.model:
-            config_ok = True
-        else:
-            config_error = "Model not configured"
+        if not cfg.model:
+            response.status_code = 503
+            return {"status": "error", "reason": "Model configuration is missing"}
     except Exception as e:
-        config_error = str(e)
+        response.status_code = 503
+        return {"status": "error", "reason": f"Configuration error: {e}"}
 
-    if db_ok and config_ok:
-        return {
-            "status": "ready",
-            "database": "ok",
-            "model_config": "ok"
-        }
-    else:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "not_ready",
-                "database": "ok" if db_ok else db_error,
-                "model_config": "ok" if config_ok else config_error
-            }
-        )
-
+    return {"status": "ready", "database": "connected", "model": cfg.model}
 
 @app.get("/metrics")
-def get_metrics():
-    """Prometheus metrics scrape endpoint."""
-    data, content_type = get_metrics_payload()
-    return Response(content=data, media_type=content_type)
-
+def metrics():
+    payload, content_type = get_metrics_payload()
+    return Response(content=payload, media_type=content_type)
 
 @app.get("/api/metrics/summary")
-def get_metrics_summary_endpoint(db: Session = Depends(get_db)):
-    """JSON summary endpoint for dashboards."""
-    return get_metrics_summary(db=db)
+def get_metrics_summary(db: Session = Depends(get_db)):
+    try:
+        total_reviews = int(sum(sample.value for sample in REVIEWS_TOTAL.collect()[0].samples if sample.name.endswith("_total")))
+    except Exception:
+        total_reviews = db.query(PRState).count()
 
+    try:
+        req_samples = LLM_REQUESTS_TOTAL.collect()[0].samples
+        total_reqs = sum(s.value for s in req_samples if s.name.endswith("_total"))
+        err_reqs = sum(s.value for s in req_samples if s.name.endswith("_total") and s.labels.get("status") == "error")
+        error_rate = round(err_reqs / total_reqs, 4) if total_reqs > 0 else 0.0
+    except Exception:
+        error_rate = 0.0
 
-# API Routes
+    try:
+        hits = sum(s.value for s in CACHE_HITS_TOTAL.collect()[0].samples if s.name.endswith("_total"))
+        misses = sum(s.value for s in CACHE_MISSES_TOTAL.collect()[0].samples if s.name.endswith("_total"))
+        total_cache = hits + misses
+        cache_hit_rate = round(hits / total_cache, 4) if total_cache > 0 else 0.0
+    except Exception:
+        cache_hit_rate = 0.0
+
+    try:
+        token_samples = LLM_TOKENS_TOTAL.collect()[0].samples
+        prompt_tokens = int(sum(s.value for s in token_samples if s.name.endswith("_total") and s.labels.get("direction") == "prompt"))
+        completion_tokens = int(sum(s.value for s in token_samples if s.name.endswith("_total") and s.labels.get("direction") == "completion"))
+    except Exception:
+        prompt_tokens = 0
+        completion_tokens = 0
+
+    try:
+        lat_samples = LLM_LATENCY_SECONDS.collect()[0].samples
+        count_sample = next((s.value for s in lat_samples if s.name.endswith("_count")), 0)
+        sum_sample = next((s.value for s in lat_samples if s.name.endswith("_sum")), 0)
+        avg_latency = round(sum_sample / count_sample, 3) if count_sample > 0 else 0.0
+    except Exception:
+        avg_latency = 0.0
+
+    return {
+        "reviews_count": total_reviews,
+        "error_rate": error_rate,
+        "cache_hit_rate": cache_hit_rate,
+        "token_counts": {
+            "prompt": prompt_tokens,
+            "completion": completion_tokens,
+            "total": prompt_tokens + completion_tokens
+        },
+        "avg_latency": avg_latency
+    }
+
+# --- Core API Routes ---
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
+
 @app.get("/api/stats")
 def get_stats(db: Session = Depends(get_db)):
     open_prs = db.query(PRState).count()
@@ -109,7 +240,6 @@ def get_prs(db: Session = Depends(get_db)):
 def get_issues(db: Session = Depends(get_db)):
     issues = db.query(IssueState).order_by(IssueState.number.desc()).all()
     return [{"number": iss.number, "title": iss.title, "status": iss.status, "auto_type": iss.auto_type, "priority": iss.priority} for iss in issues]
-
 
 console_dist = os.path.join(os.path.expanduser("~"), "codesentinel-ai", "console", "dist")
 

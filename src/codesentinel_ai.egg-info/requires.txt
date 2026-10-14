@@ -3,6 +3,9 @@ uvicorn
 requests
 tiktoken
 pydantic
+SQLAlchemy
+PyYAML
+prometheus-client
 
 [dev]
 pytest
