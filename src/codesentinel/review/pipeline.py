@@ -1,21 +1,36 @@
 import json
-import re
 import os
-from codesentinel.github_client import GitHubClient
+import time
+import uuid
+
+from codesentinel.checks.heuristics import check_heuristics
+from codesentinel.checks.secrets import scan_for_secrets
+from codesentinel.diff.chunk import chunk_diff
 from codesentinel.diff.fetch import fetch_pr_diff
 from codesentinel.diff.filter import filter_diff
-from codesentinel.diff.chunk import chunk_diff
 from codesentinel.diff.positions import map_line_to_position
-from codesentinel.checks.secrets import scan_for_secrets
-from codesentinel.checks.heuristics import check_heuristics
+from codesentinel.github_client import GitHubClient
 from codesentinel.llm.openai_compat import OpenAICompatProvider
 from codesentinel.llm.retry import generate_with_retry
-from codesentinel.schemas import ReviewResult, PRSummary
-from codesentinel.review.publish import publish_summary, publish_review
-from codesentinel.review.context import (
-    parse_codeowners, resolve_reviewers, extract_linked_issues,
-    parse_dependency_changes, analyze_test_coverage, get_repo_config
+from codesentinel.observability import (
+    ACTIVE_REVIEWS_GAUGE,
+    FINDINGS_TOTAL,
+    LLM_LATENCY_SECONDS,
+    LLM_REQUESTS_TOTAL,
+    REVIEWS_TOTAL,
+    get_logger,
 )
+from codesentinel.review.context import (
+    analyze_test_coverage,
+    extract_linked_issues,
+    get_repo_config,
+    parse_codeowners,
+    parse_dependency_changes,
+    resolve_reviewers,
+)
+from codesentinel.review.publish import publish_review, publish_summary
+from codesentinel.schemas import PRSummary, ReviewResult
+
 
 def get_pr_files(diff_text: str) -> list:
     files = []
@@ -25,158 +40,212 @@ def get_pr_files(diff_text: str) -> list:
     return files
 
 def run_pipeline(owner: str, repo: str, pr_number: int):
-    client = GitHubClient()
+    repo_name = f"{owner}/{repo}"
+    run_id = str(uuid.uuid4())
+    logger = get_logger("codesentinel.review", repo=repo_name, pr_number=pr_number, run_id=run_id)
+    logger.info("Starting PR review pipeline")
     
-    print(f"Fetching diff for {owner}/{repo}#{pr_number}")
-    raw_diff = fetch_pr_diff(owner, repo, pr_number, client)
-    filtered_diff = filter_diff(raw_diff)
-    
-    print("Running checks...")
-    checks = scan_for_secrets(filtered_diff) + check_heuristics(filtered_diff)
-    
-    print("Chunking diff...")
-    chunks = chunk_diff(filtered_diff, max_tokens=2000)
-    
-    llm = OpenAICompatProvider()
-    
-    repo_config = get_repo_config(client, owner, repo)
-    verbosity = repo_config.get("verbosity", "detailed")
-    guidelines = repo_config.get("guidelines", [])
-    guidelines_text = "\nRepo Guidelines:\n" + "\n".join([f"- {g}" for g in guidelines]) if guidelines else ""
-    
-    print("Generating Inline Reviews...")
-    prompt_path = os.path.join(os.environ.get("ACTION_PATH", os.path.join(os.path.dirname(__file__), "../../..")), "prompts/review.md")
-    with open(prompt_path) as f:
-        review_prompt = f.read()
-
-    all_findings = []
-    for chunk in chunks:
-        result = generate_with_retry(
-            llm.generate,
-            review_prompt,
-            f"Review this diff chunk and provide findings:\n\n{chunk}{guidelines_text}",
-            ReviewResult
-        )
-        all_findings.extend(result.findings)
+    ACTIVE_REVIEWS_GAUGE.inc()
+    try:
+        client = GitHubClient()
         
-    print(f"Found {len(all_findings)} issues. Validating...")
-
-    print("Generating PR Summary...")
-    prompt_path = os.path.join(os.environ.get("ACTION_PATH", os.path.join(os.path.dirname(__file__), "../../..")), "prompts/summary.md")
-    with open(prompt_path) as f:
-        summary_prompt = f.read()
-
-    summary = generate_with_retry(
-        llm.generate,
-        summary_prompt,
-        f"Generate a high-level summary for this entire diff. Consider these findings: {len(all_findings)} found.\n\nDiff:\n{filtered_diff}{guidelines_text}",
-        PRSummary
-    )
-    
-    # Save output for dashboard
-    os.makedirs("dashboard", exist_ok=True)
-    with open("dashboard/latest_review.json", "w") as f:
-        json.dump({
-            "summary": summary.model_dump(),
-            "findings": [f.model_dump() for f in all_findings],
-            "diff": filtered_diff
-        }, f)
-
-    if verbosity == "concise":
-        summary.change_groups = []
-        summary.guideline_violations = []
-
-    # Contextual resolution
-    files_changed = get_pr_files(filtered_diff)
-    
-    # 1. CODEOWNERS
-    codeowners_content = client.get_file_content(owner, repo, "CODEOWNERS")
-    if not codeowners_content:
-        codeowners_content = client.get_file_content(owner, repo, ".github/CODEOWNERS")
-    suggested_reviewers = []
-    if codeowners_content:
-        owners_map = parse_codeowners(codeowners_content)
-        suggested_reviewers = resolve_reviewers(files_changed, owners_map)
+        logger.info(f"Fetching diff for {owner}/{repo}#{pr_number}")
+        print(f"Fetching diff for {owner}/{repo}#{pr_number}")
+        raw_diff = fetch_pr_diff(owner, repo, pr_number, client)
+        filtered_diff = filter_diff(raw_diff)
         
-    # 2. Dependency changes
-    dependency_changes = parse_dependency_changes(filtered_diff)
-    
-    # 3. Linked issues
-    pr_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
-    pr_data = client.get(pr_url).json()
-    linked_issue_nums = extract_linked_issues(pr_data.get("body", ""))
-    linked_issues = []
-    for num in linked_issue_nums:
+        logger.info("Running secret and heuristic checks")
+        print("Running checks...")
+        checks = scan_for_secrets(filtered_diff) + check_heuristics(filtered_diff)
+        
+        logger.info("Chunking diff")
+        print("Chunking diff...")
+        chunks = chunk_diff(filtered_diff, max_tokens=2000)
+        
+        llm = OpenAICompatProvider()
+        llm_model = getattr(llm, "model", "default")
+        
+        repo_config = get_repo_config(client, owner, repo)
+        verbosity = repo_config.get("verbosity", "detailed")
+        guidelines = repo_config.get("guidelines", [])
+        guidelines_text = "\nRepo Guidelines:\n" + "\n".join([f"- {g}" for g in guidelines]) if guidelines else ""
+        
+        logger.info("Generating Inline Reviews", extra={"chunks_count": len(chunks)})
+        print("Generating Inline Reviews...")
+        prompt_path = os.path.join(os.environ.get("ACTION_PATH", os.path.join(os.path.dirname(__file__), "../../..")), "prompts/review.md")
+        with open(prompt_path) as f:
+            review_prompt = f.read()
+
+        all_findings = []
+        for chunk in chunks:
+            t0 = time.time()
+            try:
+                result = generate_with_retry(
+                    llm.generate,
+                    review_prompt,
+                    f"Review this diff chunk and provide findings:\n\n{chunk}{guidelines_text}",
+                    ReviewResult
+                )
+                elapsed = time.time() - t0
+                LLM_LATENCY_SECONDS.labels(model=llm_model).observe(elapsed)
+                LLM_REQUESTS_TOTAL.labels(model=llm_model, status="success").inc()
+            except Exception:
+                elapsed = time.time() - t0
+                LLM_LATENCY_SECONDS.labels(model=llm_model).observe(elapsed)
+                LLM_REQUESTS_TOTAL.labels(model=llm_model, status="error").inc()
+                raise
+            all_findings.extend(result.findings)
+            
+        logger.info(f"Found {len(all_findings)} issues. Validating...", extra={"findings_count": len(all_findings)})
+        print(f"Found {len(all_findings)} issues. Validating...")
+
+        # Record findings metrics
+        for f in all_findings:
+            FINDINGS_TOTAL.labels(
+                repo=repo_name,
+                severity=f.severity.lower(),
+                category=f.category.lower()
+            ).inc()
+
+        logger.info("Generating PR Summary")
+        print("Generating PR Summary...")
+        prompt_path = os.path.join(os.environ.get("ACTION_PATH", os.path.join(os.path.dirname(__file__), "../../..")), "prompts/summary.md")
+        with open(prompt_path) as f:
+            summary_prompt = f.read()
+
+        t0 = time.time()
         try:
-            iss_data = client.get_issue(owner, repo, num)
-            linked_issues.append({"number": num, "title": iss_data.get("title", "")})
+            summary = generate_with_retry(
+                llm.generate,
+                summary_prompt,
+                f"Generate a high-level summary for this entire diff. Consider these findings: {len(all_findings)} found.\n\nDiff:\n{filtered_diff}{guidelines_text}",
+                PRSummary
+            )
+            elapsed = time.time() - t0
+            LLM_LATENCY_SECONDS.labels(model=llm_model).observe(elapsed)
+            LLM_REQUESTS_TOTAL.labels(model=llm_model, status="success").inc()
         except Exception:
-            pass
-
-    # 4. Test coverage signal
-    tests_missing = not analyze_test_coverage(files_changed)
-
-    # 5. Security callout
-    has_security_findings = any(f.category.lower() == 'security' for f in all_findings)
-
-    # 6. Findings stats
-    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    top_concerns = []
-    for f in all_findings:
-        sev = f.severity.lower()
-        if sev in counts: counts[sev] += 1
-        if sev in ['critical', 'high'] and len(top_concerns) < 3:
-            top_concerns.append(f"[{sev.upper()}] {f.explanation} (in {f.file})")
-            
-    counts_str = ", ".join([f"{v} {k}" for k, v in counts.items() if v > 0])
-    if not counts_str: counts_str = "No issues found."
-
-    # 7. Ready to merge
-    ready = True
-    ready_reason = []
-    if counts['critical'] > 0 or counts['high'] > 0:
-        ready = False
-        ready_reason.append("Open high/critical findings.")
-    if tests_missing:
-        ready = False
-        ready_reason.append("Tests missing for source changes.")
-    if pr_data.get("draft"):
-        ready = False
-        ready_reason.append("PR is a draft.")
+            elapsed = time.time() - t0
+            LLM_LATENCY_SECONDS.labels(model=llm_model).observe(elapsed)
+            LLM_REQUESTS_TOTAL.labels(model=llm_model, status="error").inc()
+            raise
         
-    ready_to_merge_text = "Yes" if ready else f"No — {', '.join(ready_reason)}"
+        # Save output for dashboard
+        os.makedirs("dashboard", exist_ok=True)
+        with open("dashboard/latest_review.json", "w") as f:
+            json.dump({
+                "summary": summary.model_dump(),
+                "findings": [f.model_dump() for f in all_findings],
+                "diff": filtered_diff
+            }, f)
 
-    context = {
-        "suggested_reviewers": suggested_reviewers,
-        "dependency_changes": dependency_changes,
-        "linked_issues": linked_issues,
-        "tests_missing": tests_missing,
-        "has_security_findings": has_security_findings,
-        "findings_stats": {
-            "counts_str": counts_str,
-            "top_concerns": top_concerns
-        },
-        "ready_to_merge_text": ready_to_merge_text
-    }
+        if verbosity == "concise":
+            summary.change_groups = []
+            summary.guideline_violations = []
 
-    # Convert findings to GitHub format
-    gh_comments = []
-    commit_id = pr_data["head"]["sha"]
-    for f in all_findings:
-        pos = map_line_to_position(raw_diff, f.line)
-        if pos > 0:
-            gh_comments.append({
-                "path": f.file,
-                "line": f.line,
-                "side": "RIGHT",
-                "body": f"**[{f.severity.upper()}] {f.category}**\n{f.explanation}\n\nSuggested fix:\n```python\n{f.suggested_fix}\n```"
-            })
+        # Contextual resolution
+        files_changed = get_pr_files(filtered_diff)
+        
+        # 1. CODEOWNERS
+        codeowners_content = client.get_file_content(owner, repo, "CODEOWNERS")
+        if not codeowners_content:
+            codeowners_content = client.get_file_content(owner, repo, ".github/CODEOWNERS")
+        suggested_reviewers = []
+        if codeowners_content:
+            owners_map = parse_codeowners(codeowners_content)
+            suggested_reviewers = resolve_reviewers(files_changed, owners_map)
             
-    print("Publishing to GitHub...")
-    publish_summary(client, owner, repo, pr_number, summary, context, commit_id)
-    if gh_comments:
-        publish_review(client, owner, repo, pr_number, commit_id, gh_comments)
-    print("Pipeline complete.")
+        # 2. Dependency changes
+        dependency_changes = parse_dependency_changes(filtered_diff)
+        
+        # 3. Linked issues
+        pr_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
+        pr_data = client.get(pr_url).json()
+        linked_issue_nums = extract_linked_issues(pr_data.get("body", ""))
+        linked_issues = []
+        for num in linked_issue_nums:
+            try:
+                iss_data = client.get_issue(owner, repo, num)
+                linked_issues.append({"number": num, "title": iss_data.get("title", "")})
+            except Exception:
+                pass
+
+        # 4. Test coverage signal
+        tests_missing = not analyze_test_coverage(files_changed)
+
+        # 5. Security callout
+        has_security_findings = any(f.category.lower() == 'security' for f in all_findings)
+
+        # 6. Findings stats
+        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        top_concerns = []
+        for f in all_findings:
+            sev = f.severity.lower()
+            if sev in counts: counts[sev] += 1
+            if sev in ['critical', 'high'] and len(top_concerns) < 3:
+                top_concerns.append(f"[{sev.upper()}] {f.explanation} (in {f.file})")
+                
+        counts_str = ", ".join([f"{v} {k}" for k, v in counts.items() if v > 0])
+        if not counts_str: counts_str = "No issues found."
+
+        # 7. Ready to merge
+        ready = True
+        ready_reason = []
+        if counts['critical'] > 0 or counts['high'] > 0:
+            ready = False
+            ready_reason.append("Open high/critical findings.")
+        if tests_missing:
+            ready = False
+            ready_reason.append("Tests missing for source changes.")
+        if pr_data.get("draft"):
+            ready = False
+            ready_reason.append("PR is a draft.")
+            
+        ready_to_merge_text = "Yes" if ready else f"No — {', '.join(ready_reason)}"
+
+        context = {
+            "suggested_reviewers": suggested_reviewers,
+            "dependency_changes": dependency_changes,
+            "linked_issues": linked_issues,
+            "tests_missing": tests_missing,
+            "has_security_findings": has_security_findings,
+            "findings_stats": {
+                "counts_str": counts_str,
+                "top_concerns": top_concerns
+            },
+            "ready_to_merge_text": ready_to_merge_text
+        }
+
+        # Record review completion metric
+        risk_level = "high" if (counts["critical"] > 0 or counts["high"] > 0) else ("medium" if counts["medium"] > 0 else "low")
+        REVIEWS_TOTAL.labels(repo=repo_name, risk=risk_level, status="success").inc()
+        logger.info("PR review pipeline completed successfully", extra={"risk": risk_level, "ready_to_merge": ready})
+
+        # Convert findings to GitHub format
+        gh_comments = []
+        commit_id = pr_data["head"]["sha"]
+        for f in all_findings:
+            pos = map_line_to_position(raw_diff, f.line)
+            if pos > 0:
+                gh_comments.append({
+                    "path": f.file,
+                    "line": f.line,
+                    "side": "RIGHT",
+                    "body": f"**[{f.severity.upper()}] {f.category}**\n{f.explanation}\n\nSuggested fix:\n```python\n{f.suggested_fix}\n```"
+                })
+                
+        logger.info("Publishing review to GitHub")
+        print("Publishing to GitHub...")
+        publish_summary(client, owner, repo, pr_number, summary, context, commit_id)
+        if gh_comments:
+            publish_review(client, owner, repo, pr_number, commit_id, gh_comments)
+        print("Pipeline complete.")
+    except Exception as e:
+        REVIEWS_TOTAL.labels(repo=repo_name, risk="unknown", status="error").inc()
+        logger.exception(f"PR review pipeline failed: {e}")
+        raise
+    finally:
+        ACTIVE_REVIEWS_GAUGE.dec()
 
 def check_limits(files_count, total_tokens):
     if files_count > 50 or total_tokens > 50000:

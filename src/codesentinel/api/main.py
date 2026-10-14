@@ -1,10 +1,15 @@
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
 import os
 import uvicorn
+from fastapi import FastAPI, Depends, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from codesentinel.api.database import engine, Base
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from codesentinel.api.database import engine, Base, get_db, PRState, IssueState, ActivityLog
+from codesentinel.config import load_config
+from codesentinel.observability import get_metrics_payload, get_metrics_summary
 
 app = FastAPI(title="CodeSentinel Console API")
 
@@ -16,13 +21,66 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Observability endpoints
+@app.get("/healthz")
 @app.get("/api/health")
-def health_check():
+def healthz():
+    """Liveness check endpoint."""
     return {"status": "ok"}
 
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from codesentinel.api.database import get_db, PRState, IssueState, ActivityLog
+
+@app.get("/readyz")
+def readyz():
+    """Readiness check endpoint verifying database connectivity and model configuration."""
+    db_ok = False
+    db_error = None
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as e:
+        db_error = str(e)
+
+    config_ok = False
+    config_error = None
+    try:
+        cfg = load_config()
+        if cfg.model:
+            config_ok = True
+        else:
+            config_error = "Model not configured"
+    except Exception as e:
+        config_error = str(e)
+
+    if db_ok and config_ok:
+        return {
+            "status": "ready",
+            "database": "ok",
+            "model_config": "ok"
+        }
+    else:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "database": "ok" if db_ok else db_error,
+                "model_config": "ok" if config_ok else config_error
+            }
+        )
+
+
+@app.get("/metrics")
+def get_metrics():
+    """Prometheus metrics scrape endpoint."""
+    data, content_type = get_metrics_payload()
+    return Response(content=data, media_type=content_type)
+
+
+@app.get("/api/metrics/summary")
+def get_metrics_summary_endpoint(db: Session = Depends(get_db)):
+    """JSON summary endpoint for dashboards."""
+    return get_metrics_summary(db=db)
+
 
 # API Routes
 @app.get("/api/stats")
@@ -62,7 +120,6 @@ if os.path.exists(os.path.join(console_dist, "assets")):
 @app.get("/{catchall:path}", response_class=HTMLResponse)
 def serve_spa(catchall: str = ""):
     if catchall.startswith("api/"):
-        from fastapi.responses import JSONResponse
         return JSONResponse({"error": "Not Found"}, status_code=404)
         
     file_path = os.path.join(console_dist, catchall)

@@ -18,3 +18,5 @@ dev = [
     "pytest",
     "ruff"
 ]
+[tool.pytest.ini_options]
+pythonpath = ["src"]
