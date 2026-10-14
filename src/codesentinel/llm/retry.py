@@ -1,4 +1,5 @@
 import time
+import random
 from typing import Callable, Type, TypeVar
 from pydantic import BaseModel, ValidationError
 
@@ -9,22 +10,29 @@ def generate_with_retry(
     system_prompt: str,
     user_prompt: str,
     schema: Type[T],
-    max_retries: int = 3
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    jitter: bool = True
 ) -> T:
-    """Wrapper that retries on ValidationError or transient failures with exponential backoff."""
+    """Wrapper that retries on ValidationError or transient failures with exponential backoff and jitter."""
     attempt = 0
     last_exception = None
+    curr_user_prompt = user_prompt
     
     while attempt < max_retries:
         try:
-            return provider_generate_func(system_prompt, user_prompt, schema)
+            return provider_generate_func(system_prompt, curr_user_prompt, schema)
         except ValidationError as e:
             last_exception = e
             # On validation error, append the error to the prompt to ask the LLM to fix it
-            user_prompt += f"\n\nYour previous JSON failed validation. Error: {e.errors()}\nPlease fix the JSON and try again."
+            curr_user_prompt += f"\n\nYour previous JSON failed validation. Error: {e.errors()}\nPlease fix the JSON and try again."
         except Exception as e:
             last_exception = e
-            time.sleep(2 ** attempt)
+            delay = initial_delay * (backoff_factor ** attempt)
+            if jitter:
+                delay += random.uniform(0.1, 0.5)
+            time.sleep(delay)
         attempt += 1
         
     raise RuntimeError(f"Failed to generate valid output after {max_retries} attempts. Last error: {last_exception}")

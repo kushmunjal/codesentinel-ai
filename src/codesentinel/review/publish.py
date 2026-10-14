@@ -89,7 +89,25 @@ def publish_summary(client: GitHubClient, owner: str, repo: str, pr_number: int,
     else:
         client.session.post(comments_url, json={"body": body})
 
+def is_review_submitted(client: GitHubClient, owner: str, repo: str, pr_number: int, commit_id: str) -> bool:
+    """Checks whether a review has already been submitted for the specified commit_id."""
+    if not commit_id or not client or not client.token:
+        return False
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+    try:
+        resp = client.get(url)
+        reviews = resp.json()
+        for rev in reviews:
+            if rev.get("commit_id") == commit_id:
+                return True
+    except Exception as e:
+        print(f"Warning: Failed to query existing reviews: {e}")
+    return False
+
 def publish_review(client: GitHubClient, owner: str, repo: str, pr_number: int, commit_id: str, comments: list):
+    if is_review_submitted(client, owner, repo, pr_number, commit_id):
+        print(f"Notice: Review for commit {commit_id} already submitted on PR #{pr_number}. Skipping publish_review.")
+        return
     url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
     payload = {
         "commit_id": commit_id,

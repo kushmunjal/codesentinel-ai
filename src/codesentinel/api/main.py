@@ -5,6 +5,7 @@ import os
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 from codesentinel.api.database import engine, Base
+from codesentinel.api.webhook import router as webhook_router
 
 app = FastAPI(title="CodeSentinel Console API")
 
@@ -15,6 +16,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount webhook router for POST /api/webhook
+app.include_router(webhook_router)
 
 @app.get("/api/health")
 def health_check():
