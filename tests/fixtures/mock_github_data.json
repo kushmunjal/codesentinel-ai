@@ -1,0 +1,26 @@
+{
+  "pr": {
+    "number": 42,
+    "title": "Add search endpoint",
+    "body": "Implements basic search. Resolves #101",
+    "draft": false,
+    "head": {
+      "sha": "c0ffee1234567890abcdef"
+    }
+  },
+  "linked_issue": {
+    "number": 101,
+    "title": "SQL Injection in search",
+    "body": "Need a safe search API query parameter handler"
+  },
+  "labels": [
+    {"name": "bug"},
+    {"name": "enhancement"},
+    {"name": "security"},
+    {"name": "question"}
+  ],
+  "recent_issues": [
+    {"number": 100, "title": "Update README docs", "body": "Clarify configuration flags"}
+  ],
+  "codeowners": "* @core-team\nsrc/api.py @backend-lead"
+}

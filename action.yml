@@ -1,23 +1,34 @@
 name: 'CodeSentinel AI'
 description: 'AI-powered PR reviewer and Issue triager'
+author: 'kushmunjal'
+branding:
+  icon: 'shield'
+  color: 'blue'
 inputs:
   provider:
-    description: 'LLM provider'
+    description: 'LLM provider (e.g., groq, openai, anthropic)'
     required: true
+    default: 'groq'
   model:
-    description: 'LLM model name'
+    description: 'LLM model name (e.g., qwen/qwen3.8-27b, gpt-4o)'
     required: true
+    default: 'qwen/qwen3.8-27b'
+  fallback_model:
+    description: 'Fallback LLM model name on rate limits or errors'
+    required: false
+    default: 'openai/gpt-oss-120b'
   api_key:
-    description: 'API key for LLM'
+    description: 'API key for LLM provider'
     required: true
   base_url:
-    description: 'Optional Base URL'
+    description: 'Optional OpenAI-compatible API Base URL'
     required: false
   github_token:
-    description: 'GitHub Token'
+    description: 'GitHub Token for posting review comments and labels'
     required: true
   config_path:
-    description: 'Path to config file'
+    description: 'Path to custom repository config file'
+    required: false
     default: '.codesentinel.yml'
 runs:
   using: 'composite'
@@ -37,6 +48,7 @@ runs:
       env:
         PROVIDER: ${{ inputs.provider }}
         MODEL: ${{ inputs.model }}
+        FALLBACK_MODEL: ${{ inputs.fallback_model }}
         API_KEY: ${{ inputs.api_key }}
         BASE_URL: ${{ inputs.base_url }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
