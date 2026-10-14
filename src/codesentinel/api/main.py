@@ -1,23 +1,19 @@
-import os
-import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
+import os
 from threading import Lock
+import time
 
-import uvicorn
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+import uvicorn
 
-from codesentinel.api.auth import router as auth_router
-from codesentinel.api.auth import seed_default_user
-from codesentinel.api.database import (
-    IssueState,
-    PRState,
-    get_db,
-)
+from codesentinel.api.auth import router as auth_router, seed_default_user
+from codesentinel.api.database import IssueState, PRState, get_db
+from codesentinel.api.webhook import router as webhook_router
 
 
 @asynccontextmanager
@@ -41,7 +37,6 @@ class InMemoryRateLimiter:
         now = time.time()
         with self.lock:
             cutoff = now - self.window
-            # Discard timestamps outside sliding window
             self.requests[client_id] = [t for t in self.requests[client_id] if t > cutoff]
             if len(self.requests[client_id]) >= self.rpm:
                 return True
@@ -49,12 +44,10 @@ class InMemoryRateLimiter:
             return False
 
     def reset(self):
-        """Reset all rate limiter counters (useful for testing)."""
         with self.lock:
             self.requests.clear()
 
 rate_limiter = InMemoryRateLimiter(requests_per_minute=120)
-
 
 # --- CORS Lockdown ---
 
@@ -81,12 +74,10 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
 )
 
-
 # --- Security Headers & Rate Limiting Middleware ---
 
 @app.middleware("http")
 async def security_and_rate_limit_middleware(request: Request, call_next):
-    # 1. Rate limiting on /api/ routes
     if request.url.path.startswith("/api/"):
         client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
         if not client_ip:
@@ -106,10 +97,7 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
                 }
             )
 
-    # 2. Process request
     response = await call_next(request)
-
-    # 3. Standard security headers (nosniff, DENY, CSP, XSS, Referrer)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -124,23 +112,15 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
     )
     return response
 
-
-# --- Startup Event ---
-
-# Startup handled via lifespan
-
-
-# --- Include Auth Router ---
-
+# Include Routers
 app.include_router(auth_router)
-
+app.include_router(webhook_router)
 
 # --- Core API Routes ---
 
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
-
 
 @app.get("/api/stats")
 def get_stats(db: Session = Depends(get_db)):
@@ -149,7 +129,7 @@ def get_stats(db: Session = Depends(get_db)):
     needs_attention = db.query(PRState).filter(PRState.status == "Needs attention").count()
     open_issues = db.query(IssueState).count()
     needs_triage = db.query(IssueState).filter(IssueState.status == "Needs Triage").count()
-
+    
     return {
         "open_prs": open_prs,
         "ready_to_merge": ready_to_merge,
@@ -159,62 +139,36 @@ def get_stats(db: Session = Depends(get_db)):
         "reviews_today": open_prs
     }
 
-
 @app.get("/api/prs")
 def get_prs(db: Session = Depends(get_db)):
     prs = db.query(PRState).order_by(PRState.number.desc()).all()
-    return [
-        {
-            "number": pr.number,
-            "title": pr.title,
-            "author": pr.author,
-            "status": pr.status,
-            "risk_level": pr.risk_level,
-            "repo": pr.repo
-        }
-        for pr in prs
-    ]
-
+    return [{"number": pr.number, "title": pr.title, "author": pr.author, "status": pr.status, "risk_level": pr.risk_level, "repo": pr.repo} for pr in prs]
 
 @app.get("/api/issues")
 def get_issues(db: Session = Depends(get_db)):
     issues = db.query(IssueState).order_by(IssueState.number.desc()).all()
-    return [
-        {
-            "number": iss.number,
-            "title": iss.title,
-            "status": iss.status,
-            "auto_type": iss.auto_type,
-            "priority": iss.priority
-        }
-        for iss in issues
-    ]
-
-
-# --- SPA Static File Serving ---
+    return [{"number": iss.number, "title": iss.title, "status": iss.status, "auto_type": iss.auto_type, "priority": iss.priority} for iss in issues]
 
 console_dist = os.path.join(os.path.expanduser("~"), "codesentinel-ai", "console", "dist")
 
 if os.path.exists(os.path.join(console_dist, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(console_dist, "assets")), name="assets")
 
-
 @app.get("/", response_class=HTMLResponse)
 @app.get("/{catchall:path}", response_class=HTMLResponse)
 def serve_spa(catchall: str = ""):
     if catchall.startswith("api/"):
         return JSONResponse({"error": "Not Found"}, status_code=404)
-
+        
     file_path = os.path.join(console_dist, catchall)
     if catchall and os.path.isfile(file_path):
         return FileResponse(file_path)
-
+        
     index_file = os.path.join(console_dist, "index.html")
     if os.path.exists(index_file):
         with open(index_file, "r") as f:
             return f.read()
     return "Console not built yet."
-
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8080)

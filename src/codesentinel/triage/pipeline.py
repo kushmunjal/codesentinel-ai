@@ -1,5 +1,6 @@
 import json
 import os
+import hashlib
 from codesentinel.github_client import GitHubClient
 from codesentinel.triage.duplicates import find_potential_duplicates
 from codesentinel.llm.openai_compat import OpenAICompatProvider
@@ -8,11 +9,44 @@ from codesentinel.schemas import TriageResult
 from codesentinel.api.database import SessionLocal, IssueState
 from codesentinel.review.context import parse_codeowners, resolve_reviewers, get_repo_config
 
+def compute_body_hash(body: str) -> str:
+    """Computes SHA-256 hash of issue body for triage idempotency."""
+    return hashlib.sha256((body or "").strip().encode("utf-8")).hexdigest()
+
+def is_issue_already_triaged(issue_number: int, body_hash: str, client: GitHubClient = None, owner: str = "", repo: str = "") -> bool:
+    """Checks whether an issue was already triaged for the current body hash via DB or GitHub comment."""
+    db = SessionLocal()
+    try:
+        db_issue = db.query(IssueState).filter(IssueState.number == issue_number).first()
+        if db_issue and db_issue.last_triaged_body_hash == body_hash:
+            return True
+    finally:
+        db.close()
+
+    if client and client.token and owner and repo:
+        try:
+            comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
+            resp = client.get(comments_url)
+            if resp.ok:
+                marker = f"<!-- codesentinel:triage:body_hash={body_hash} -->"
+                for c in resp.json():
+                    if marker in (c.get("body") or ""):
+                        return True
+        except Exception as e:
+            print(f"Warning: Failed checking comment idempotency: {e}")
+
+    return False
+
 def run_triage_pipeline(owner: str, repo: str, issue_number: int):
     client = GitHubClient()
     
     print(f"Fetching issue {owner}/{repo}#{issue_number}")
     issue = client.get_issue(owner, repo, issue_number)
+    
+    body_hash = compute_body_hash(issue.get("body", ""))
+    if is_issue_already_triaged(issue_number, body_hash, client, owner, repo):
+        print(f"Notice: Issue #{issue_number} already triaged for body hash {body_hash[:8]}. Skipping.")
+        return
     
     print("Fetching repository labels...")
     labels = client.get_labels(owner, repo)
@@ -128,6 +162,7 @@ def run_triage_pipeline(owner: str, repo: str, issue_number: int):
     db_issue.auto_type = valid_labels[0] if valid_labels else 'unknown'
     db_issue.priority = result.priority.capitalize() if result.priority else 'Low'
     db_issue.status = 'Triaged'
+    db_issue.last_triaged_body_hash = body_hash
  
     db.commit()
     db.close()

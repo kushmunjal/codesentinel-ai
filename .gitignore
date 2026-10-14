@@ -12,3 +12,4 @@ build/
 *.db-wal
 *.db-shm
 test-repo/
+.venv
