@@ -35,6 +35,7 @@ def mock_fixtures():
 def test_full_review_pipeline_end_to_end(mock_fixtures, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     os.environ["ACTION_PATH"] = "/home/student/worktrees/ws-qa"
+    monkeypatch.setenv("API_KEY", "mock-api-key-12345")
     
     gh_data = mock_fixtures["github"]
     raw_diff = mock_fixtures["diff"]
@@ -103,6 +104,8 @@ def test_full_review_pipeline_end_to_end(mock_fixtures, tmp_path, monkeypatch):
         
         mock_provider_instance = MagicMock()
         mock_provider_instance.generate.side_effect = mock_llm_generate
+        mock_provider_instance.total_tokens = 0
+        mock_provider_instance.total_cost_usd = 0.0
         mock_provider_cls.return_value = mock_provider_instance
         
         # Execute review pipeline
@@ -141,6 +144,7 @@ def test_full_review_pipeline_end_to_end(mock_fixtures, tmp_path, monkeypatch):
 def test_full_triage_pipeline_end_to_end(mock_fixtures, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     os.environ["ACTION_PATH"] = "/home/student/worktrees/ws-qa"
+    monkeypatch.setenv("API_KEY", "mock-api-key-12345")
     
     gh_data = mock_fixtures["github"]
     
@@ -171,7 +175,8 @@ def test_full_triage_pipeline_end_to_end(mock_fixtures, tmp_path, monkeypatch):
         suggested_reply="Thank you for reporting this vulnerability. Our security team will review it."
     )
     
-    with patch("codesentinel.triage.pipeline.GitHubClient", return_value=mock_gh), \
+    with patch("codesentinel.triage.pipeline.is_issue_already_triaged", return_value=False), \
+             patch("codesentinel.triage.pipeline.GitHubClient", return_value=mock_gh), \
          patch("codesentinel.triage.pipeline.OpenAICompatProvider") as mock_provider_cls:
         
         mock_provider_instance = MagicMock()
@@ -216,6 +221,7 @@ def test_full_triage_pipeline_end_to_end(mock_fixtures, tmp_path, monkeypatch):
 def test_full_review_pipeline_clean_pr(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     os.environ["ACTION_PATH"] = "/home/student/worktrees/ws-qa"
+    monkeypatch.setenv("API_KEY", "mock-api-key-12345")
     
     clean_diff = """diff --git a/src/math_utils.py b/src/math_utils.py
 --- a/src/math_utils.py
@@ -280,6 +286,8 @@ diff --git a/tests/test_math_utils.py b/tests/test_math_utils.py
         
         mock_provider_instance = MagicMock()
         mock_provider_instance.generate.side_effect = mock_llm
+        mock_provider_instance.total_tokens = 0
+        mock_provider_instance.total_cost_usd = 0.0
         mock_provider_cls.return_value = mock_provider_instance
         
         run_pipeline(owner="acme", repo="service", pr_number=55)

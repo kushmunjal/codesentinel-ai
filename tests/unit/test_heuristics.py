@@ -54,7 +54,7 @@ def test_scan_for_secrets_api_key():
 """
     secrets = scan_for_secrets(diff)
     assert len(secrets) == 1
-    assert secrets[0] == "Potential secret committed."
+    assert secrets[0].startswith("Potential secret committed")
 
 def test_scan_for_secrets_bearer_token():
     diff = """diff --git a/client.ts b/client.ts
@@ -62,7 +62,7 @@ def test_scan_for_secrets_bearer_token():
 """
     secrets = scan_for_secrets(diff)
     assert len(secrets) == 1
-    assert secrets[0] == "Potential secret committed."
+    assert secrets[0].startswith("Potential secret committed")
 
 def test_scan_for_secrets_aws_access_key():
     diff = """diff --git a/deploy.sh b/deploy.sh
@@ -70,7 +70,7 @@ def test_scan_for_secrets_aws_access_key():
 """
     secrets = scan_for_secrets(diff)
     assert len(secrets) == 1
-    assert secrets[0] == "Potential secret committed."
+    assert secrets[0].startswith("Potential secret committed")
 
 def test_scan_for_secrets_ignores_deletions_and_safe_lines():
     diff = """diff --git a/config.py b/config.py

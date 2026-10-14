@@ -113,10 +113,13 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
         all_findings = []
         for i, chunk in enumerate(chunks):
             # 3. Check token and cost budgets
-            if llm.total_tokens > config.token_budget or llm.total_cost_usd > config.cost_budget_usd:
-                logger.warning(f"Budget exceeded (Tokens: {llm.total_tokens}/{config.token_budget}, Cost: ${llm.total_cost_usd:.4f}/${config.cost_budget_usd}). Halting further chunk reviews.")
-                print(f"Budget exceeded: stopping review for chunk {i+1}/{len(chunks)}.")
-                break
+            total_toks = getattr(llm, "total_tokens", 0)
+            total_cost = getattr(llm, "total_cost_usd", 0.0)
+            if isinstance(total_toks, (int, float)) and isinstance(total_cost, (int, float)):
+                if total_toks > config.token_budget or total_cost > config.cost_budget_usd:
+                    logger.warning(f"Budget exceeded (Tokens: {total_toks}/{config.token_budget}, Cost: ${total_cost:.4f}/${config.cost_budget_usd}). Halting further chunk reviews.")
+                    print(f"Budget exceeded: stopping review for chunk {i+1}/{len(chunks)}.")
+                    break
 
             # 4. Check Diff Chunk Cache
             chunk_hash = compute_chunk_hash(chunk, config.model)
@@ -174,6 +177,8 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
                 review_comments.append({
                     "path": finding.file,
                     "position": pos,
+                    "line": finding.line,
+                    "side": "RIGHT",
                     "body": comment_text
                 })
 
@@ -310,6 +315,7 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
             )
             db.add(finding_rec)
 
+        pr_status = pr_state.status
         db.commit()
         db.close()
 
@@ -325,7 +331,7 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
         logger.info("PR review pipeline completed successfully", extra={
             "risk_level": summary_obj.risk_level,
             "findings_count": len(all_findings),
-            "status": pr_state.status
+            "status": pr_status
         })
         print(f"Pipeline finished. Risk: {summary_obj.risk_level}")
     except Exception as e:
