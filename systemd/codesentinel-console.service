@@ -1,0 +1,16 @@
+[Unit]
+Description=CodeSentinel AI Console Service
+After=network.target
+
+[Service]
+Type=simple
+User=student
+Group=student
+WorkingDirectory=/home/student/codesentinel-ai
+EnvironmentFile=/home/student/codesentinel-ai/.env
+ExecStart=/home/student/codesentinel-ai/.venv/bin/uvicorn codesentinel.api.main:app --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
