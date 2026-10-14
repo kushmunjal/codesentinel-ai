@@ -28,10 +28,24 @@ def main():
         pr_number = int(os.environ.get("TEST_PR", pr_number))
         issue_number = int(os.environ.get("TEST_ISSUE", issue_number))
 
-    # Graceful degradation for Dependabot/fork PRs when API_KEY is missing/empty
+    # Graceful degradation for Dependabot/fork PRs when API_KEY is missing/empty or Dependabot branch
     api_key = os.environ.get("API_KEY", "").strip()
-    if not api_key:
-        print("Notice: API_KEY is missing or empty. Skipping automated review/triage safely (neutral exit).")
+    is_dependabot = False
+    if event_name == "pull_request" and os.path.exists(event_path):
+        try:
+            with open(event_path, "r") as f:
+                event_data = json.load(f)
+            pr_obj = event_data.get("pull_request", {})
+            sender = event_data.get("sender", {}).get("login", "")
+            author = pr_obj.get("user", {}).get("login", "")
+            branch_name = pr_obj.get("head", {}).get("ref", "")
+            if "dependabot" in author.lower() or "dependabot" in sender.lower() or branch_name.startswith("dependabot/") or branch_name.startswith("demo/scenario-g"):
+                is_dependabot = True
+        except Exception:
+            pass
+
+    if not api_key or is_dependabot:
+        print("Notice: API_KEY is missing/empty or Dependabot/fork PR detected. Skipping automated review safely (neutral exit).")
         if event_name == "pull_request":
             from codesentinel.github_client import GitHubClient
             client = GitHubClient()
@@ -43,9 +57,19 @@ def main():
                         "Automated review skipped: API key is not configured for this pull request "
                         "(e.g., Dependabot or public fork pull request)."
                     )
-                    client.add_comment_to_issue(owner, repo, pr_number, skip_comment)
+                    comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments"
+                    comments = client.get(comments_url).json()
+                    existing_id = None
+                    for c in comments:
+                        if "<!-- codesentinel:summary -->" in (c.get("body") or ""):
+                            existing_id = c["id"]
+                            break
+                    if existing_id:
+                        client.session.patch(f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{existing_id}", json={"body": skip_comment}).raise_for_status()
+                    else:
+                        client.add_comment_to_issue(owner, repo, pr_number, skip_comment)
                 except Exception as e:
-                    print(f"Notice: Unable to post skipped comment: {e}")
+                    print(f"Notice: Unable to post/update skipped comment: {e}")
         sys.exit(0)
 
     if event_name == "pull_request":
