@@ -38,7 +38,7 @@ def get_pr_files(diff_text: str) -> list:
             files.append(line[6:])
     return files
 
-def run_pipeline(owner: str, repo: str, pr_number: int):
+def run_pipeline(owner: str, repo: str, pr_number: int, force: bool = False):
     run_id = f"review-{owner}-{repo}-{pr_number}-{int(time.time())}"
     repo_name = f"{owner}/{repo}"
     logger = get_logger("review", repo=repo_name, pr_number=pr_number, run_id=run_id)
@@ -183,7 +183,7 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
                 })
 
         if review_comments:
-            if is_review_submitted(client, owner, repo, pr_number, commit_id):
+            if not force and is_review_submitted(client, owner, repo, pr_number, commit_id):
                 logger.info(f"Idempotency: Review for commit {commit_id} already published. Skipping duplicate review comments.")
                 print(f"Review for commit {commit_id} already submitted. Skipping duplicate review comments.")
             else:

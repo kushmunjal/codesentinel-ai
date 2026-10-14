@@ -53,7 +53,15 @@ def main():
         run_pipeline(owner, repo, pr_number)
     elif event_name == "issue_comment":
         from codesentinel.commands import handle_comment
-        print('Handling issue comment')
+        print(f"CodeSentinel AI invoked for issue_comment on #{issue_number}")
+        comment_data = event_data.get("comment", {}) if "event_data" in locals() and event_data else {}
+        comment_body = comment_data.get("body", os.environ.get("COMMENT_BODY", ""))
+        author_association = comment_data.get("author_association", os.environ.get("AUTHOR_ASSOCIATION", "COLLABORATOR"))
+        comment_user = comment_data.get("user", {}).get("login", "")
+        if comment_user.endswith("[bot]") or "codesentinel" in comment_user.lower():
+            print("Notice: Ignoring comment from bot itself.")
+        else:
+            handle_comment(owner, repo, issue_number, comment_body, author_association)
     elif event_name == "issues":
         print(f"CodeSentinel AI invoked for {event_name} - Issue #{issue_number}")
         run_triage_pipeline(owner, repo, issue_number)

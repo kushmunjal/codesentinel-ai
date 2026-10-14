@@ -51,9 +51,27 @@ def run_triage_pipeline(owner: str, repo: str, issue_number: int):
     logger.info(f"Fetching issue details for {repo_name}#{issue_number}")
     print(f"Fetching issue {owner}/{repo}#{issue_number}")
     issue = client.get_issue(owner, repo, issue_number)
-    
-    body_hash = compute_body_hash(issue.get("body", ""))
-    
+
+    # Fetch comments to incorporate user follow-ups/replies
+    user_comments = []
+    try:
+        comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
+        resp = client.get(comments_url)
+        if getattr(resp, "ok", False) or getattr(resp, "status_code", 0) == 200:
+            for c in resp.json():
+                cbody = c.get("body", "")
+                user_login = c.get("user", {}).get("login", "")
+                if "<!-- codesentinel:triage" not in cbody and not user_login.endswith("[bot]"):
+                    user_comments.append(cbody.strip())
+    except Exception:
+        pass
+
+    full_body = issue.get("body", "") or ""
+    if user_comments:
+        full_body += "\n\nAdditional User Information:\n" + "\n---\n".join(user_comments)
+
+    body_hash = compute_body_hash(full_body)
+
     # Check DB and GitHub comment for idempotency
     if is_issue_already_triaged(issue_number, body_hash, client, owner, repo):
         logger.info(f"Issue #{issue_number} already triaged with body hash {body_hash}. Skipping.")
@@ -83,7 +101,7 @@ def run_triage_pipeline(owner: str, repo: str, issue_number: int):
         
         logger.info("Generating triage result with LLM", extra={"model": llm_model})
         print("Generating Triage Result...")
-        user_prompt = f"Available Labels: {', '.join(label_names)}\n\nIssue Title: {issue['title']}\n\nIssue Body: {issue.get('body', '')}"
+        user_prompt = f"Available Labels: {', '.join(label_names)}\n\nIssue Title: {issue['title']}\n\nIssue Body:\n{full_body}"
         if dupes:
             user_prompt += f"\n\nPotential duplicate detected: #{dupes[0]['number']} - {dupes[0]['title']}"
             
