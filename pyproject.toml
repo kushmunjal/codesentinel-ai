@@ -10,15 +10,19 @@ dependencies = [
     "pydantic",
     "SQLAlchemy",
     "PyYAML",
-    "prometheus-client"
+    "prometheus-client",
+    "pyjwt",
+    "bcrypt"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-cov",
+    "pytest-asyncio",
     "ruff",
-    "mypy"
+    "mypy",
+    "playwright"
 ]
 
 [tool.ruff]

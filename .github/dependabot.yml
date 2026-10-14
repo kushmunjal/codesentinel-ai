@@ -1,0 +1,42 @@
+version: 2
+updates:
+  # Python Dependencies (Pip / Pyproject)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  # Console UI Dependencies (npm)
+  - package-ecosystem: "npm"
+    directory: "/console"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+      - "frontend"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  # GitHub Actions Workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "security"
+      - "actions"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"

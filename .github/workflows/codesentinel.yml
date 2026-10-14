@@ -1,0 +1,29 @@
+name: CodeSentinel AI
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issues:
+    types: [opened]
+
+# Least-privilege permissions: read repository content, write comments/labels to PRs and Issues
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  sentinel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Execute CodeSentinel Review & Triage
+        uses: ./
+        with:
+          provider: 'groq'
+          model: 'qwen/qwen3.8-27b'
+          api_key: ${{ secrets.LLM_API_KEY }}
+          base_url: 'https://api.groq.com/openai/v1'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
