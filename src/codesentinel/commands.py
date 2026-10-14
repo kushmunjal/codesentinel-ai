@@ -10,13 +10,13 @@ def handle_comment(owner: str, repo: str, issue_number: int, comment_body: str, 
         return
         
     cmd = (comment_body or "").strip().lower()
-    if cmd == "/sentinel review":
+    if cmd.startswith("/sentinel review"):
         print(f"Executing slash command: /sentinel review on {owner}/{repo}#{issue_number}")
         run_pipeline(owner, repo, issue_number, force=True)
-    elif cmd == "/sentinel triage":
+    elif cmd.startswith("/sentinel triage"):
         print(f"Executing slash command: /sentinel triage on {owner}/{repo}#{issue_number}")
         run_triage_pipeline(owner, repo, issue_number)
-    elif cmd == "/sentinel ignore":
+    elif cmd.startswith("/sentinel ignore"):
         print("Bot is ignoring this item.")
     else:
         # Check if this is an issue reply providing clarifying info
