@@ -19,3 +19,5 @@ htmlcov/
 *.db-shm
 test-repo/
 .venv
+.coverage
+.pytest_cache/

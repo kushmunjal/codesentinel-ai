@@ -1,7 +1,7 @@
-import pytest
-from codesentinel.diff.filter import filter_diff
 from codesentinel.diff.chunk import chunk_diff
+from codesentinel.diff.filter import filter_diff
 from codesentinel.diff.positions import map_line_to_position
+
 
 def test_filter_diff():
     with open("tests/fixtures/sample_diff.txt", "r") as f:

@@ -13,7 +13,7 @@ SEVERITY_LEVEL_MAP = {
     "low": "note"
 }
 
-def generate_sarif(findings: List[Finding], repo_uri: str = "https://github.com/kushmunjal/codesentinel-ai") -> Dict[str, Any]:
+def generate_sarif(findings: List[Finding], repo_uri: str = "https://github.com/kushmunjal/codesentinel-ai", repo_name: str = "", commit_sha: str = "", **kwargs) -> Dict[str, Any]:
     """Generates a SARIF v2.1.0 dictionary representation from CodeSentinel findings."""
     rules_dict = {}
     results = []

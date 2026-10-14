@@ -54,7 +54,9 @@ def get_repo_config(client: GitHubClient, owner: str, repo: str) -> dict:
     content = client.get_file_content(owner, repo, '.codesentinel.yml')
     if content:
         try:
-            return yaml.safe_load(content) or {}
+            loaded = yaml.safe_load(content)
+            if isinstance(loaded, dict):
+                return loaded
         except Exception:
             pass
     return {}

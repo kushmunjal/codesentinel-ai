@@ -1,9 +1,11 @@
-import pytest
-from pydantic import BaseModel
 from unittest.mock import MagicMock, patch
+
+from pydantic import BaseModel
+
 from codesentinel.llm.openai_compat import OpenAICompatProvider
 from codesentinel.llm.retry import generate_with_retry
 from codesentinel.schemas import PRSummary
+
 
 class DummySchema(BaseModel):
     message: str

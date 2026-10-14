@@ -1,5 +1,6 @@
 from codesentinel.triage.duplicates import find_potential_duplicates
 
+
 def test_find_potential_duplicates():
     issue_title = "Bug in login"
     issue_body = "The login page crashes when I type my password."
