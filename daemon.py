@@ -5,65 +5,64 @@ from codesentinel.api.database import SessionLocal, IssueState, PRState
 from codesentinel.triage.pipeline import run_triage_pipeline
 from codesentinel.review.pipeline import run_pipeline
 
-OWNER = 'kushmunjal'
-REPO = 'codesentinel-test'
-POLL_INTERVAL = 300 # 5 minutes
+OWNER = os.environ.get("TEST_OWNER", "kushmunjal")
+REPO = os.environ.get("TEST_REPO", "codesentinel-test")
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "10"))
 
-print(f'Starting CodeSentinel Daemon. Polling {OWNER}/{REPO} every 5 minutes...')
+print(f"Starting CodeSentinel Daemon. Polling {OWNER}/{REPO} every {POLL_INTERVAL}s...")
+
+def poll_once():
+    client = GitHubClient()
+    items = client.get_issues(OWNER, REPO)
+    db = SessionLocal()
+    try:
+        for item in items:
+            number = item["number"]
+            title = item.get("title", "")
+            is_pr = "pull_request" in item
+            
+            if is_pr:
+                db_pr = db.query(PRState).filter(PRState.number == number).first()
+                if not db_pr:
+                    print(f"New PR detected: #{number}")
+                    try:
+                        run_pipeline(OWNER, REPO, number)
+                    except Exception as e:
+                        print(f"Error reviewing PR #{number}: {e}")
+                else:
+                    try:
+                        resp = client.get(f"https://api.github.com/repos/{OWNER}/{REPO}/pulls/{number}")
+                        if getattr(resp, "ok", False) or getattr(resp, "status_code", 0) == 200:
+                            pr_data = resp.json()
+                            current_sha = pr_data.get("head", {}).get("sha", "")
+                            if current_sha and current_sha != db_pr.last_reviewed_sha:
+                                print(f"New commit detected on PR #{number} ({current_sha[:8]}). Running review...")
+                                run_pipeline(OWNER, REPO, number)
+                    except Exception as e:
+                        print(f"Error checking PR #{number} update: {e}")
+            else:
+                db_iss = db.query(IssueState).filter(IssueState.number == number).first()
+                if not db_iss:
+                    print(f"New Issue detected: #{number}")
+                    try:
+                        run_triage_pipeline(OWNER, REPO, number)
+                    except Exception as e:
+                        print(f"Error triaging Issue #{number}: {e}")
+                else:
+                    try:
+                        run_triage_pipeline(OWNER, REPO, number)
+                    except Exception:
+                        pass
+    finally:
+        db.close()
 
 def run_daemon():
-    client = GitHubClient()
     while True:
-        print('Checking for new issues and PRs...')
         try:
-            items = client.get_issues(OWNER, REPO)
-            db = SessionLocal()
-            
-            for item in items:
-                number = item['number']
-                title = item['title']
-                is_pr = 'pull_request' in item
-                
-                if is_pr:
-                    # Check if PR exists in DB
-                    db_pr = db.query(PRState).filter(PRState.number == number).first()
-                    if not db_pr:
-                        print(f'New PR detected: #{number}')
-                        try:
-                            # Add to DB first so we don't process it again if it crashes
-                            new_pr = PRState(number=number, title=title, author=item.get('user', {}).get('login', 'unknown'), repo=REPO, status='In Review', risk_level='PENDING')
-                            db.add(new_pr)
-                            db.commit()
-                            
-                            run_pipeline(OWNER, REPO, number)
-                            
-                            # Update DB post-review (simplified)
-                            new_pr.status = 'Reviewed'
-                            db.commit()
-                        except Exception as e:
-                            print(f'Error processing PR #{number}: {e}')
-                else:
-                    # Check if Issue exists in DB
-                    db_iss = db.query(IssueState).filter(IssueState.number == number).first()
-                    if not db_iss:
-                        print(f'New Issue detected: #{number}')
-                        try:
-                            # Add to DB first
-                            new_iss = IssueState(number=number, title=title, status='Triaging', auto_type='pending', priority='Low')
-                            db.add(new_iss)
-                            db.commit()
-                            
-                            run_triage_pipeline(OWNER, REPO, number)
-                            # (run_triage_pipeline now updates the DB itself)
-                        except Exception as e:
-                            print(f'Error processing Issue #{number}: {e}')
-                            
-            db.close()
+            poll_once()
         except Exception as e:
-            print(f'Error fetching items from GitHub: {e}')
-            
-        print(f'Sleeping for {POLL_INTERVAL} seconds...')
+            print(f"Daemon poll error: {e}")
         time.sleep(POLL_INTERVAL)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_daemon()

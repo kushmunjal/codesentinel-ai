@@ -109,10 +109,17 @@ def publish_review(client: GitHubClient, owner: str, repo: str, pr_number: int, 
         print(f"Notice: Review for commit {commit_id} already submitted on PR #{pr_number}. Skipping publish_review.")
         return
     url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+    clean_comments = []
+    for c in comments:
+        c_copy = dict(c)
+        c_copy.pop("position", None)
+        if "side" not in c_copy:
+            c_copy["side"] = "RIGHT"
+        clean_comments.append(c_copy)
     payload = {
         "commit_id": commit_id,
         "event": "COMMENT",
-        "comments": comments
+        "comments": clean_comments
     }
     resp = client.session.post(url, json=payload)
     if not resp.ok:
