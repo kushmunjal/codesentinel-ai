@@ -65,7 +65,7 @@ class OpenAICompatProvider(LLMProvider):
 
         # Check for 429 or 5xx to fall back to fallback_model
         status_code = getattr(resp, "status_code", 200)
-        if isinstance(status_code, int) and (status_code == 429 or (500 <= status_code < 600)):
+        if isinstance(status_code, int) and (status_code in [400, 404, 429] or (500 <= status_code < 600)):
             if self.fallback_model and self.fallback_model != self.model:
                 print(f"Warning: Primary model {self.model} returned HTTP {status_code}. Falling back to {self.fallback_model}...")
                 active_model = self.fallback_model
