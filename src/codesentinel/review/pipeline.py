@@ -176,8 +176,7 @@ def run_pipeline(owner: str, repo: str, pr_number: int, force: bool = False):
                     comment_text += f"\n\nSuggested fix:\n```python\n{finding.suggested_fix}\n```"
                 review_comments.append({
                     "path": finding.file,
-                    "position": pos,
-                    "line": finding.line,
+                    "line": max(1, finding.line or 1),
                     "side": "RIGHT",
                     "body": comment_text
                 })
