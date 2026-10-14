@@ -7,6 +7,9 @@ Requires-Dist: uvicorn
 Requires-Dist: requests
 Requires-Dist: tiktoken
 Requires-Dist: pydantic
+Requires-Dist: SQLAlchemy
+Requires-Dist: PyYAML
+Requires-Dist: prometheus-client
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: ruff; extra == "dev"
