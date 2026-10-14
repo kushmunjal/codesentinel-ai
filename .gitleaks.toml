@@ -1,0 +1,66 @@
+title = "CodeSentinel AI Secret Detection Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for tests, fixtures, and documentation"
+paths = [
+  '''^\.gitleaks\.toml$''',
+  '''^tests/fixtures/.*''',
+  '''^tests/security/.*''',
+  '''^tests/unit/.*''',
+  '''^console/node_modules/.*''',
+  '''^\.venv/.*'''
+]
+
+# Rule 1: Groq API Key
+[[rules]]
+id = "groq-api-key"
+description = "Groq Cloud API Key"
+regex = '''(?i)gsk_[a-zA-Z0-9]{52}'''
+secretGroup = 0
+keywords = ["gsk_"]
+
+# Rule 2: OpenAI API Key
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API Key"
+regex = '''(?i)sk-[a-zA-Z0-9]{48}'''
+secretGroup = 0
+keywords = ["sk-"]
+
+# Rule 3: GitHub Personal Access Token (classic & fine-grained)
+[[rules]]
+id = "github-pat"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}'''
+keywords = ["ghp_", "github_pat_"]
+
+# Rule 4: AWS Access Key ID
+[[rules]]
+id = "aws-access-key-id"
+description = "AWS Access Key ID"
+regex = '''AKIA[0-9A-Z]{16}'''
+keywords = ["AKIA"]
+
+# Rule 5: Generic High-Entropy API Key / Secret Token
+[[rules]]
+id = "generic-api-key"
+description = "Generic Hardcoded Secret or API Key"
+regex = '''(?i)(api[_-]?key|secret[_-]?key|auth[_-]?token)[\s:=]+["\']([a-zA-Z0-9_\-]{20,})["\']'''
+secretGroup = 2
+
+# Rule 6: Private Cryptographic Keys
+[[rules]]
+id = "private-key"
+description = "Asymmetric Private Cryptographic Key"
+regex = '''-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY(?: BLOCK)?-----'''
+keywords = ["-----BEGIN"]
+
+# Rule 7: Slack Bot/User Token
+[[rules]]
+id = "slack-token"
+description = "Slack Bot or User Token"
+regex = '''xox[baprs]-[0-9a-zA-Z]{10,48}'''
+keywords = ["xoxb-", "xoxa-", "xoxp-", "xoxr-", "xoxs-"]

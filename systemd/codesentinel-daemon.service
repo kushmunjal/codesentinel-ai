@@ -1,0 +1,16 @@
+[Unit]
+Description=CodeSentinel AI Polling Daemon Service
+After=network.target
+
+[Service]
+Type=simple
+User=student
+Group=student
+WorkingDirectory=/home/student/codesentinel-ai
+EnvironmentFile=/home/student/codesentinel-ai/.env
+ExecStart=/home/student/codesentinel-ai/.venv/bin/python /home/student/codesentinel-ai/daemon.py
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

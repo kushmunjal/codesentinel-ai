@@ -1,0 +1,48 @@
+services:
+  codesentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: codesentinel:latest
+    container_name: codesentinel
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_PATH=/data/codesentinel.db
+      - PORT=8080
+    volumes:
+      - codesentinel_data:/data
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: codesentinel-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    profiles:
+      - monitoring
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: codesentinel-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+    restart: unless-stopped
+
+volumes:
+  codesentinel_data:
+  prometheus_data:
+  grafana_data:
