@@ -21,5 +21,32 @@ dev = [
     "pytest-cov",
     "pytest-asyncio",
     "ruff",
+    "mypy",
     "playwright"
+]
+
+[tool.ruff]
+target-version = "py312"
+exclude = [
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "console",
+    "patch_*.py",
+    "pipeline_output*.txt",
+    "update_ui*.py",
+    "seed_db.py",
+    "test-repo",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = [
+    "E402",
+    "E501",
+    "E701",
+    "F401",
+    "F541",
+    "F841",
 ]

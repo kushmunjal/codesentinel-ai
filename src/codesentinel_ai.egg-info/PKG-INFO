@@ -12,4 +12,6 @@ Requires-Dist: PyYAML
 Requires-Dist: prometheus-client
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
 Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
