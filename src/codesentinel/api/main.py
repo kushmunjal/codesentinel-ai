@@ -335,7 +335,7 @@ def submit_feedback(finding_id: int, payload: dict, db: Session = Depends(get_db
     finding.feedback = feedback_val
     db.commit()
     try:
-        FEEDBACK_TOTAL.labels(verdict=feedback_val).inc()
+        FEEDBACK_TOTAL.labels(type=feedback_val).inc()
     except Exception:
         pass
     return {"status": "ok", "id": finding_id, "feedback": feedback_val}
