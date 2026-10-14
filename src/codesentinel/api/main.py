@@ -4,7 +4,7 @@ import os
 from threading import Lock
 import time
 
-from fastapi import Depends, FastAPI, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,11 +13,12 @@ from sqlalchemy import text
 import uvicorn
 
 from codesentinel.api.auth import router as auth_router, seed_default_user
-from codesentinel.api.database import IssueState, PRState, engine, get_db
+from codesentinel.api.database import IssueState, PRState, FindingRecord, engine, get_db
 from codesentinel.api.webhook import router as webhook_router
 from codesentinel.config import load_config
 from codesentinel.observability.metrics import (
     get_metrics_payload,
+    FEEDBACK_TOTAL,
     REVIEWS_TOTAL,
     LLM_REQUESTS_TOTAL,
     CACHE_HITS_TOTAL,
@@ -242,19 +243,102 @@ def get_stats(db: Session = Depends(get_db)):
     open_issues = db.query(IssueState).count()
     needs_triage = db.query(IssueState).filter(IssueState.status == "Needs Triage").count()
     
+    findings = db.query(FindingRecord).all()
+    by_sev = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    by_cat = {"bug": 0, "security": 0, "style": 0, "performance": 0}
+    for f in findings:
+        sev = (f.severity or "").lower()
+        cat = (f.category or "").lower()
+        if sev in by_sev:
+            by_sev[sev] += 1
+        if cat in by_cat:
+            by_cat[cat] += 1
+
     return {
         "open_prs": open_prs,
         "ready_to_merge": ready_to_merge,
         "needs_attention": needs_attention,
         "open_issues": open_issues,
         "needs_triage": needs_triage,
-        "reviews_today": open_prs
+        "reviews_today": open_prs,
+        "findings_by_severity": by_sev,
+        "findings_by_category": by_cat
     }
 
 @app.get("/api/prs")
 def get_prs(db: Session = Depends(get_db)):
     prs = db.query(PRState).order_by(PRState.number.desc()).all()
-    return [{"number": pr.number, "title": pr.title, "author": pr.author, "status": pr.status, "risk_level": pr.risk_level, "repo": pr.repo} for pr in prs]
+    result = []
+    for pr in prs:
+        findings = db.query(FindingRecord).filter(FindingRecord.pr_number == pr.number).all()
+        result.append({
+            "number": pr.number,
+            "title": pr.title,
+            "author": pr.author,
+            "status": pr.status,
+            "risk_level": pr.risk_level,
+            "risk_reasoning": pr.risk_reasoning,
+            "review_effort": pr.review_effort or 1,
+            "head_sha": pr.head_sha or pr.last_reviewed_sha or "HEAD",
+            "findings_count": len(findings),
+            "findings": [{
+                "id": f.id,
+                "file": f.file,
+                "line": f.line,
+                "severity": f.severity,
+                "category": f.category,
+                "explanation": f.explanation,
+                "suggested_fix": f.suggested_fix,
+                "feedback": f.feedback
+            } for f in findings],
+            "repo": pr.repo
+        })
+    return result
+
+@app.get("/api/prs/{number}")
+def get_pr_detail(number: int, db: Session = Depends(get_db)):
+    pr = db.query(PRState).filter(PRState.number == number).first()
+    if not pr:
+        raise HTTPException(status_code=404, detail="PR not found")
+    findings = db.query(FindingRecord).filter(FindingRecord.pr_number == number).all()
+    return {
+        "number": pr.number,
+        "title": pr.title,
+        "author": pr.author,
+        "status": pr.status,
+        "risk_level": pr.risk_level,
+        "risk_reasoning": pr.risk_reasoning,
+        "review_effort": pr.review_effort or 1,
+        "head_sha": pr.head_sha or pr.last_reviewed_sha or "HEAD",
+        "findings_count": len(findings),
+        "findings": [{
+            "id": f.id,
+            "file": f.file,
+            "line": f.line,
+            "severity": f.severity,
+            "category": f.category,
+            "explanation": f.explanation,
+            "suggested_fix": f.suggested_fix,
+            "feedback": f.feedback
+        } for f in findings],
+        "repo": pr.repo
+    }
+
+@app.post("/api/findings/{finding_id}/feedback")
+def submit_feedback(finding_id: int, payload: dict, db: Session = Depends(get_db)):
+    feedback_val = payload.get("feedback")
+    if feedback_val not in ["useful", "false_positive"]:
+        raise HTTPException(status_code=400, detail="Invalid feedback value")
+    finding = db.query(FindingRecord).filter(FindingRecord.id == finding_id).first()
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    finding.feedback = feedback_val
+    db.commit()
+    try:
+        FEEDBACK_TOTAL.labels(verdict=feedback_val).inc()
+    except Exception:
+        pass
+    return {"status": "ok", "id": finding_id, "feedback": feedback_val}
 
 @app.get("/api/issues")
 def get_issues(db: Session = Depends(get_db)):
