@@ -28,6 +28,26 @@ def main():
         pr_number = int(os.environ.get("TEST_PR", pr_number))
         issue_number = int(os.environ.get("TEST_ISSUE", issue_number))
 
+    # Graceful degradation for Dependabot/fork PRs when API_KEY is missing/empty
+    api_key = os.environ.get("API_KEY", "").strip()
+    if not api_key:
+        print("Notice: API_KEY is missing or empty. Skipping automated review/triage safely (neutral exit).")
+        if event_name == "pull_request":
+            from codesentinel.github_client import GitHubClient
+            client = GitHubClient()
+            if client.token:
+                try:
+                    skip_comment = (
+                        "<!-- codesentinel:summary -->\n"
+                        "## CodeSentinel AI\n\n"
+                        "Automated review skipped: API key is not configured for this pull request "
+                        "(e.g., Dependabot or public fork pull request)."
+                    )
+                    client.add_comment_to_issue(owner, repo, pr_number, skip_comment)
+                except Exception as e:
+                    print(f"Notice: Unable to post skipped comment: {e}")
+        sys.exit(0)
+
     if event_name == "pull_request":
         print(f"CodeSentinel AI invoked for {event_name} - PR #{pr_number}")
         run_pipeline(owner, repo, pr_number)
