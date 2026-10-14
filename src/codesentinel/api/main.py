@@ -134,23 +134,43 @@ def healthz():
     return {"status": "ok"}
 
 @app.get("/readyz")
-def readyz(response: Response, db: Session = Depends(get_db)):
+def readyz(response: Response = None):
+    db_status = "ok"
+    model_status = "ok"
+    is_ready = True
+
     try:
-        db.execute(text("SELECT 1"))
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
     except Exception as e:
-        response.status_code = status.HTTP_533 if hasattr(status, "HTTP_533") else 503
-        return {"status": "error", "reason": f"Database unavailable: {e}"}
+        is_ready = False
+        db_status = f"Database unavailable: {e}"
 
     try:
         cfg = load_config()
         if not cfg.model:
-            response.status_code = 503
-            return {"status": "error", "reason": "Model configuration is missing"}
+            is_ready = False
+            model_status = "Model configuration is missing"
     except Exception as e:
-        response.status_code = 503
-        return {"status": "error", "reason": f"Configuration error: {e}"}
+        is_ready = False
+        model_status = f"Configuration error: {e}"
 
-    return {"status": "ready", "database": "connected", "model": cfg.model}
+    if not is_ready:
+        if response is not None:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {
+            "status": "not_ready",
+            "database": db_status,
+            "model_config": model_status
+        }
+
+    if response is not None:
+        response.status_code = status.HTTP_200_OK
+    return {
+        "status": "ready",
+        "database": "ok",
+        "model_config": "ok"
+    }
 
 @app.get("/metrics")
 def metrics():

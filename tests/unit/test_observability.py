@@ -265,10 +265,11 @@ def test_review_pipeline_metrics(
     assert summary["reviews_count"] >= 1
 
 
+@patch("codesentinel.triage.pipeline.is_issue_already_triaged", return_value=False)
 @patch("codesentinel.triage.pipeline.GitHubClient")
 @patch("codesentinel.triage.pipeline.OpenAICompatProvider")
 @patch("codesentinel.triage.pipeline.generate_with_retry")
-def test_triage_pipeline_metrics(mock_generate, mock_llm_cls, mock_gh):
+def test_triage_pipeline_metrics(mock_generate, mock_llm_cls, mock_gh, mock_triaged):
     from codesentinel.schemas import TriageResult
     from codesentinel.triage.pipeline import run_triage_pipeline
 

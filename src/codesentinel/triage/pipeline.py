@@ -15,20 +15,29 @@ from codesentinel.observability.metrics import ISSUES_TRIAGED_TOTAL, LLM_LATENCY
 
 
 def compute_body_hash(body: str) -> str:
-    return hashlib.sha256((body or "").encode("utf-8")).hexdigest()
+    return hashlib.sha256((body or "").strip().encode("utf-8")).hexdigest()
 
 
-def is_issue_already_triaged(client: GitHubClient, owner: str, repo: str, issue_number: int, body_hash: str) -> bool:
+def is_issue_already_triaged(issue_number: int, body_hash: str, client: GitHubClient = None, owner: str = "", repo: str = "") -> bool:
+    db = SessionLocal()
     try:
-        comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
-        resp = client.get(comments_url)
-        if resp.status_code == 200:
-            for comment in resp.json():
-                body = comment.get("body", "")
-                if f"<!-- codesentinel:triage:body_hash={body_hash} -->" in body:
-                    return True
-    except Exception:
-        pass
+        db_issue = db.query(IssueState).filter(IssueState.number == issue_number).first()
+        if db_issue and db_issue.last_triaged_body_hash == body_hash and db_issue.status == "Triaged":
+            return True
+    finally:
+        db.close()
+
+    if client and getattr(client, "token", None) and owner and repo:
+        try:
+            comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
+            resp = client.get(comments_url)
+            if getattr(resp, "ok", False) or getattr(resp, "status_code", 0) == 200:
+                marker = f"<!-- codesentinel:triage:body_hash={body_hash} -->"
+                for c in resp.json():
+                    if marker in (c.get("body") or ""):
+                        return True
+        except Exception:
+            pass
     return False
 
 
@@ -46,20 +55,10 @@ def run_triage_pipeline(owner: str, repo: str, issue_number: int):
     body_hash = compute_body_hash(issue.get("body", ""))
     
     # Check DB and GitHub comment for idempotency
-    db = SessionLocal()
-    db_iss = db.query(IssueState).filter(IssueState.number == issue_number).first()
-    if db_iss and db_iss.last_triaged_body_hash == body_hash and db_iss.status == "Triaged":
+    if is_issue_already_triaged(issue_number, body_hash, client, owner, repo):
         logger.info(f"Issue #{issue_number} already triaged with body hash {body_hash}. Skipping.")
         print(f"Issue #{issue_number} already triaged with body hash {body_hash}. Skipping.")
-        db.close()
         return
-
-    if is_issue_already_triaged(client, owner, repo, issue_number, body_hash):
-        logger.info(f"Idempotency: Issue #{issue_number} already contains triage comment for body hash {body_hash}. Skipping.")
-        print(f"Idempotency: Issue #{issue_number} already contains triage comment for body hash {body_hash}. Skipping.")
-        db.close()
-        return
-    db.close()
 
     try:
         print("Fetching repository labels...")

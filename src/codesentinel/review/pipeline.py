@@ -61,8 +61,11 @@ def run_pipeline(owner: str, repo: str, pr_number: int):
                         ":information_source: **Automated review skipped**: API key is not configured for this pull request runner "
                         "(common on forks or Dependabot PRs). CodeSentinel exited safely with code 0."
                     )
-                    comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments"
-                    client.session.post(comments_url, json={"body": skip_body})
+                    if hasattr(client, "add_comment_to_issue"):
+                        client.add_comment_to_issue(owner, repo, pr_number, skip_body)
+                    elif hasattr(client, "session"):
+                        comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments"
+                        client.session.post(comments_url, json={"body": skip_body})
                 except Exception as e:
                     logger.warning(f"Could not post neutral skip comment: {e}")
 

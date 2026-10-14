@@ -114,3 +114,11 @@ def write_sarif(findings: List[Finding], output_path: str, repo_uri: str = "http
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(sarif_data, f, indent=2)
     return sarif_data
+
+
+def write_sarif_file(sarif_data: Dict[str, Any], filepath: str) -> None:
+    dirname = os.path.dirname(os.path.abspath(filepath))
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(sarif_data, f, indent=2)
