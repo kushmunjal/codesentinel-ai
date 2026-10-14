@@ -10,17 +10,16 @@ dependencies = [
     "pydantic",
     "SQLAlchemy",
     "PyYAML",
-    "prometheus-client"
+    "prometheus-client",
+    "pyjwt",
+    "bcrypt"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "ruff"
+    "pytest-cov",
+    "pytest-asyncio",
+    "ruff",
+    "playwright"
 ]
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-testpaths = ["tests"]
-
-[tool.ruff.lint]
-ignore = ["B008"]

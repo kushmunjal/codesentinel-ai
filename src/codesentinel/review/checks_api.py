@@ -20,7 +20,8 @@ def create_check_run(
     summary: str = "",
     text: str = "",
     annotations: Optional[List[Dict[str, Any]]] = None,
-    findings: Optional[List[Finding]] = None
+    findings: Optional[List[Finding]] = None,
+    severity_threshold: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Creates a GitHub Check Run via GitHub Checks API.

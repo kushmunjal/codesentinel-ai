@@ -4,16 +4,27 @@ import os
 from threading import Lock
 import time
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import uvicorn
 
 from codesentinel.api.auth import router as auth_router, seed_default_user
-from codesentinel.api.database import IssueState, PRState, get_db
+from codesentinel.api.database import IssueState, PRState, engine, get_db
 from codesentinel.api.webhook import router as webhook_router
+from codesentinel.config import load_config
+from codesentinel.observability.metrics import (
+    get_metrics_payload,
+    REVIEWS_TOTAL,
+    LLM_REQUESTS_TOTAL,
+    CACHE_HITS_TOTAL,
+    CACHE_MISSES_TOTAL,
+    LLM_TOKENS_TOTAL,
+    LLM_LATENCY_SECONDS
+)
 
 
 @asynccontextmanager
@@ -115,6 +126,107 @@ async def security_and_rate_limit_middleware(request: Request, call_next):
 # Include Routers
 app.include_router(auth_router)
 app.include_router(webhook_router)
+
+# --- Observability Endpoints ---
+
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+@app.get("/readyz")
+def readyz(response: Response = None):
+    db_status = "ok"
+    model_status = "ok"
+    is_ready = True
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as e:
+        is_ready = False
+        db_status = f"Database unavailable: {e}"
+
+    try:
+        cfg = load_config()
+        if not cfg.model:
+            is_ready = False
+            model_status = "Model configuration is missing"
+    except Exception as e:
+        is_ready = False
+        model_status = f"Configuration error: {e}"
+
+    if not is_ready:
+        if response is not None:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {
+            "status": "not_ready",
+            "database": db_status,
+            "model_config": model_status
+        }
+
+    if response is not None:
+        response.status_code = status.HTTP_200_OK
+    return {
+        "status": "ready",
+        "database": "ok",
+        "model_config": "ok"
+    }
+
+@app.get("/metrics")
+def metrics():
+    payload, content_type = get_metrics_payload()
+    return Response(content=payload, media_type=content_type)
+
+@app.get("/api/metrics/summary")
+def get_metrics_summary(db: Session = Depends(get_db)):
+    try:
+        total_reviews = int(sum(sample.value for sample in REVIEWS_TOTAL.collect()[0].samples if sample.name.endswith("_total")))
+    except Exception:
+        total_reviews = db.query(PRState).count()
+
+    try:
+        req_samples = LLM_REQUESTS_TOTAL.collect()[0].samples
+        total_reqs = sum(s.value for s in req_samples if s.name.endswith("_total"))
+        err_reqs = sum(s.value for s in req_samples if s.name.endswith("_total") and s.labels.get("status") == "error")
+        error_rate = round(err_reqs / total_reqs, 4) if total_reqs > 0 else 0.0
+    except Exception:
+        error_rate = 0.0
+
+    try:
+        hits = sum(s.value for s in CACHE_HITS_TOTAL.collect()[0].samples if s.name.endswith("_total"))
+        misses = sum(s.value for s in CACHE_MISSES_TOTAL.collect()[0].samples if s.name.endswith("_total"))
+        total_cache = hits + misses
+        cache_hit_rate = round(hits / total_cache, 4) if total_cache > 0 else 0.0
+    except Exception:
+        cache_hit_rate = 0.0
+
+    try:
+        token_samples = LLM_TOKENS_TOTAL.collect()[0].samples
+        prompt_tokens = int(sum(s.value for s in token_samples if s.name.endswith("_total") and s.labels.get("direction") == "prompt"))
+        completion_tokens = int(sum(s.value for s in token_samples if s.name.endswith("_total") and s.labels.get("direction") == "completion"))
+    except Exception:
+        prompt_tokens = 0
+        completion_tokens = 0
+
+    try:
+        lat_samples = LLM_LATENCY_SECONDS.collect()[0].samples
+        count_sample = next((s.value for s in lat_samples if s.name.endswith("_count")), 0)
+        sum_sample = next((s.value for s in lat_samples if s.name.endswith("_sum")), 0)
+        avg_latency = round(sum_sample / count_sample, 3) if count_sample > 0 else 0.0
+    except Exception:
+        avg_latency = 0.0
+
+    return {
+        "reviews_count": total_reviews,
+        "error_rate": error_rate,
+        "cache_hit_rate": cache_hit_rate,
+        "token_counts": {
+            "prompt": prompt_tokens,
+            "completion": completion_tokens,
+            "total": prompt_tokens + completion_tokens
+        },
+        "avg_latency": avg_latency
+    }
 
 # --- Core API Routes ---
 
